@@ -311,7 +311,10 @@ export default function RankActions() {
   const [urlInput,     setUrlInput]     = useState("");
   const [progress,     setProgress]     = useState(0);
   const [tasks,        setTasks]        = useState([false,false,false]);
-  const [selectedSite, setSelectedSite] = useState("mywebsite.com");
+  const [selectedSite, setSelectedSite] = useState(() => localStorage.getItem("rankactions_selectedSite") || "mywebsite.com");
+  const [sites,        setSites]        = useState(() => JSON.parse(localStorage.getItem("rankactions_sites") || '["mywebsite.com"]'));
+  const [addingSite,   setAddingSite]   = useState(false);
+  const [newSiteInput, setNewSiteInput] = useState("");
   const [siteOpen,     setSiteOpen]     = useState(false);
   const [activeTab,    setActiveTab]    = useState("Overview");
   const [expandedFix,  setExpandedFix]  = useState(null);
@@ -327,10 +330,12 @@ export default function RankActions() {
   // ── On mount: check if returning from Google OAuth ──────────
   // The Worker redirects back with ?userId=xxx&auth=success
   useEffect(() => {
-    const params   = new URLSearchParams(window.location.search);
-    const uid      = params.get("userId");
-    const result   = params.get("auth");
-    const saved    = localStorage.getItem("rankactions_userId");
+    const params      = new URLSearchParams(window.location.search);
+    const uid         = params.get("userId");
+    const result      = params.get("auth");
+    const saved       = localStorage.getItem("rankactions_userId");
+    const savedSite   = localStorage.getItem("rankactions_selectedSite");
+    const savedSites  = localStorage.getItem("rankactions_sites");
 
     if (result === "error") setDataError("Google connection failed. Check your Worker URL is correct.");
 
@@ -339,7 +344,9 @@ export default function RankActions() {
       setUserId(activeUid);
       setIsConnected(true);
       localStorage.setItem("rankactions_userId", activeUid);
-      window.history.replaceState({}, "", window.location.pathname); // clean URL
+      if (savedSite)  setSelectedSite(savedSite);
+      if (savedSites) setSites(JSON.parse(savedSites));
+      window.history.replaceState({}, "", window.location.pathname);
       setScreen("dashboard");
     }
   }, []);
@@ -520,7 +527,15 @@ Return ONLY valid JSON (no markdown, no explanation):
           <input className="ob-input" placeholder="e.g. mywebsite.com" value={urlInput}
             onChange={e=>setUrlInput(e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&urlInput.trim()&&setStep(2)}/>
-          <button className="ob-btn" disabled={!urlInput.trim()} onClick={()=>{setSelectedSite(urlInput.trim());setStep(2);}}>Continue →</button>
+          <button className="ob-btn" disabled={!urlInput.trim()} onClick={()=>{
+            const clean = urlInput.trim().replace(/^https?:\/\//,"");
+            setSelectedSite(clean);
+            localStorage.setItem("rankactions_selectedSite", clean);
+            const updated = [...new Set([clean])];
+            setSites(updated);
+            localStorage.setItem("rankactions_sites", JSON.stringify(updated));
+            setStep(2);
+          }}>Continue →</button>
         </>}
         {step===2 && <>
           <div className="ob-h">Connect your data</div>
@@ -588,18 +603,48 @@ Return ONLY valid JSON (no markdown, no explanation):
   const TopBar = () => (
     <div className="topbar">
       <div className="site-selector">
-        <div className="site-btn" onClick={e=>{e.stopPropagation();setSiteOpen(p=>!p);}}>
+        <div className="site-btn" onClick={e=>{e.stopPropagation();setSiteOpen(p=>!p);setAddingSite(false);}}>
           <span>🌐</span><span>{selectedSite}</span><span style={{color:"var(--text3)",fontSize:"0.7rem"}}>▼</span>
         </div>
         {siteOpen && (
           <div className="site-dropdown">
-            {["mywebsite.com","clientsite.co.uk"].map(s=>(
+            {sites.map(s=>(
               <div key={s} className={`site-opt ${s===selectedSite?"sel":""}`}
-                onClick={()=>{setSelectedSite(s);setSiteOpen(false);setSiteData(null);setAiSummary(null);}}>
+                onClick={()=>{
+                  setSelectedSite(s);
+                  localStorage.setItem("rankactions_selectedSite", s);
+                  setSiteOpen(false);setSiteData(null);setAiSummary(null);
+                }}>
                 {s}
               </div>
             ))}
-            <div className="site-add" onClick={()=>setSiteOpen(false)}>➕ Add site</div>
+            {addingSite ? (
+              <div style={{padding:".5rem .75rem",borderTop:"1px solid var(--border)"}}>
+                <input
+                  autoFocus
+                  placeholder="e.g. mysite.com"
+                  value={newSiteInput}
+                  onChange={e=>setNewSiteInput(e.target.value)}
+                  onKeyDown={e=>{
+                    if(e.key==="Enter" && newSiteInput.trim()){
+                      const clean = newSiteInput.trim().replace(/^https?:\/\//,"");
+                      const updated = [...new Set([...sites, clean])];
+                      setSites(updated);
+                      localStorage.setItem("rankactions_sites", JSON.stringify(updated));
+                      setSelectedSite(clean);
+                      localStorage.setItem("rankactions_selectedSite", clean);
+                      setSiteData(null);setAiSummary(null);
+                      setNewSiteInput("");setAddingSite(false);setSiteOpen(false);
+                    }
+                    if(e.key==="Escape"){setAddingSite(false);setNewSiteInput("");}
+                  }}
+                  style={{width:"100%",background:"var(--bg)",border:"1px solid var(--border)",borderRadius:"6px",padding:".4rem .6rem",color:"var(--text)",fontFamily:"var(--font)",fontSize:".82rem",outline:"none"}}
+                />
+                <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>Press Enter to add · Esc to cancel</div>
+              </div>
+            ) : (
+              <div className="site-add" onClick={()=>setAddingSite(true)}>➕ Add site</div>
+            )}
           </div>
         )}
       </div>
