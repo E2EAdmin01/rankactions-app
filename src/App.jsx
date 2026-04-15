@@ -511,6 +511,7 @@ export default function RankActions() {
   const [modalData,    setModalData]    = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalApplied, setModalApplied] = useState(new Set());
+  const [contentPreset,setContentPreset]= useState(null);
   const [aiFixCount,   setAiFixCount]   = useState(() => {
     const stored = JSON.parse(localStorage.getItem("rankactions_ai_fix_usage") || '{"count":0,"month":""}');
     const thisMonth = new Date().toISOString().slice(0,7);
@@ -656,13 +657,20 @@ export default function RankActions() {
 
   const getSeoRows = () => {
     if (!siteData?.keywords?.length) return DEMO_SEO;
-    return siteData.keywords.slice(0,15).map(k => ({
-      page:"—", kw:k.keyword, pos:k.position, vol:`${k.impressions}/mo`,
-      gap: k.position<=10 ? "Add keyword to title tag and H1"
-         : k.position<=20 ? "Create dedicated page for this keyword"
-         : "Target in a new blog post",
-      opp: k.opportunity,
-    }));
+    return siteData.keywords.slice(0,15).map(k => {
+      let gap, action;
+      if (k.position <= 10) {
+        gap    = "Add keyword to title tag and H1";
+        action = "fix_title";
+      } else if (k.position <= 20) {
+        gap    = "Create a dedicated page for this keyword";
+        action = "write_page";
+      } else {
+        gap    = "Write a blog post targeting this keyword";
+        action = "write_blog";
+      }
+      return { page:"—", kw:k.keyword, pos:k.position, vol:`${k.impressions}/mo`, gap, action, opp:k.opportunity };
+    });
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -1156,29 +1164,68 @@ Return ONLY valid JSON — no markdown, no explanation:
           </div>
           <div className="table-wrap">
             <table className="data-table">
-              <thead><tr><th>Page</th><th>Keyword</th><th>Position</th><th>Impressions/mo</th><th>Fix</th><th></th></tr></thead>
+              <thead><tr><th>Keyword</th><th>Position</th><th>Impressions/mo</th><th>What to do</th><th>Action</th></tr></thead>
               <tbody>
-                {seoRows.map((row,i)=>(
-                  <tr key={i}>
-                    <td className="td-mono" style={{color:"var(--text2)"}}>{row.page}</td>
-                    <td style={{fontWeight:500}}>{row.kw}{row.opp&&<span className="td-opp">opp</span>}</td>
-                    <td className="td-mono" style={{color:row.pos<=10?"var(--amber)":"var(--text)"}}>#{row.pos}</td>
-                    <td className="td-mono" style={{color:"var(--text2)"}}>{row.vol}</td>
-                    <td style={{color:"var(--text2)",fontSize:"0.8rem"}}>{row.gap}</td>
-                    <td><span className="td-link" onClick={()=>openModal({
-                      id:`seo-${i}`, level:"medium", color:"#f5a623", label:"OPPORTUNITY", type:"SEO",
-                      title:`Improve ranking for "${row.kw}"`,
-                      desc:`Currently at position #${row.pos} with ${row.vol} impressions. ${row.gap}.`,
-                      m1:`Position: #${row.pos}`, m2:row.vol,
-                      field:"Title Tag & Page Content",
-                      current:`Not fully optimised for "${row.kw}"`,
-                      recommended:row.gap, metaDesc:null,
-                    })}>Fix →</span></td>
-                  </tr>
-                ))}
+                {seoRows.map((row,i)=>{
+                  const isWriteAction = row.action==="write_blog"||row.action==="write_page";
+                  const btnLabel = row.action==="fix_title"   ? "✨ Fix title tag"
+                                 : row.action==="write_page"  ? "✍ Write page"
+                                 : "✍ Write blog post";
+                  const btnColor = row.action==="fix_title" ? "var(--blue)" : "var(--green)";
+                  return (
+                    <tr key={i}>
+                      <td style={{fontWeight:500}}>
+                        {row.kw}
+                        {row.opp&&<span className="td-opp">opp</span>}
+                      </td>
+                      <td className="td-mono" style={{color:row.pos<=10?"var(--amber)":"var(--text)"}}>#{row.pos}</td>
+                      <td className="td-mono" style={{color:"var(--text2)"}}>{row.vol}</td>
+                      <td style={{color:"var(--text2)",fontSize:"0.8rem"}}>{row.gap}</td>
+                      <td>
+                        {row.action==="fix_title" ? (
+                          // Title tag fix → opens AI fix modal
+                          <span className="td-link" style={{color:btnColor}} onClick={()=>openModal({
+                            id:`seo-${i}`, level:"medium", color:"#f5a623", label:"OPPORTUNITY", type:"SEO",
+                            title:`Improve ranking for "${row.kw}"`,
+                            desc:`Currently at position #${row.pos} with ${row.vol} impressions. ${row.gap}.`,
+                            m1:`Position: #${row.pos}`, m2:row.vol,
+                            field:"Title Tag & Page Content",
+                            current:`Not fully optimised for "${row.kw}"`,
+                            recommended:row.gap, metaDesc:null,
+                          })}>
+                            {btnLabel}
+                          </span>
+                        ) : isPro ? (
+                          // Pro user → go to content generator pre-filled
+                          <span className="td-link" style={{color:btnColor}} onClick={()=>{
+                            setContentPreset({ kw:row.kw, biz:"", notes:`Targeting position #${row.pos} — currently getting ${row.vol} impressions/month` });
+                            setScreen("content");
+                          }}>
+                            {btnLabel}
+                          </span>
+                        ) : (
+                          // Free user → show upgrade nudge
+                          <span style={{display:"inline-flex",alignItems:"center",gap:".4rem"}}>
+                            <span className="td-link" style={{color:"var(--amber)",fontSize:".75rem"}} onClick={()=>setShowUpgrade(true)}>
+                              🔒 {btnLabel}
+                            </span>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          {!isPro && (
+            <div style={{marginTop:"1rem",background:"var(--adim)",border:"1px solid rgba(245,166,35,.2)",borderRadius:10,padding:"1rem 1.25rem",display:"flex",alignItems:"center",gap:"1rem",flexWrap:"wrap"}}>
+              <span style={{fontSize:".875rem",color:"var(--amber)"}}>🔒 <strong>Write page</strong> and <strong>Write blog post</strong> actions require Pro — they open the AI content generator pre-filled with the keyword ready to go.</span>
+              <button style={{marginLeft:"auto",background:"var(--green)",color:"#000",border:"none",borderRadius:7,padding:".4rem .9rem",fontFamily:"var(--font)",fontSize:".82rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}} onClick={()=>setShowUpgrade(true)}>
+                Upgrade to Pro →
+              </button>
+            </div>
+          )}
         </>}
 
         {activeTab==="Conversions" && <>
@@ -1297,12 +1344,12 @@ Return ONLY valid JSON — no markdown, no explanation:
   // CONTENT GENERATOR
   // ─────────────────────────────────────────────────────────────
   const ContentGenerator = () => {
-    const [kw,        setKw]        = useState("");
-    const [biz,       setBiz]       = useState("");
+    const [kw,        setKw]        = useState(contentPreset?.kw    || "");
+    const [biz,       setBiz]       = useState(contentPreset?.biz   || "");
     const [tone,      setTone]      = useState("professional");
     const [wordCount, setWordCount] = useState("1000");
     const [cta,       setCta]       = useState("");
-    const [notes,     setNotes]     = useState("");
+    const [notes,     setNotes]     = useState(contentPreset?.notes || "");
     const [loading,   setLoading]   = useState(false);
     const [output,    setOutput]    = useState(null);
     const [error,     setError]     = useState(null);
@@ -1322,6 +1369,9 @@ Return ONLY valid JSON — no markdown, no explanation:
       "Applying your site's design…",
       "Finalising meta tags…",
     ];
+
+    // Clear preset after first use so it doesn't re-apply on revisit
+    useEffect(()=>{ if(contentPreset) setContentPreset(null); },[]);
 
     const suggestedKw = siteData?.topOpportunities?.[0]?.keyword || "";
 
@@ -1490,6 +1540,13 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
           <div className="cg-title">Content Generator</div>
           <div className="cg-sub">Generate SEO-optimised blog posts from your target keywords</div>
         </div>
+
+        {/* Pre-fill notice — shown when arriving from SEO Opportunities */}
+        {kw && contentPreset === null && (
+          <div style={{background:"var(--gdim)",border:"1px solid rgba(15,219,138,.2)",borderRadius:10,padding:".85rem 1.1rem",fontSize:".85rem",color:"var(--green)",display:"flex",alignItems:"center",gap:".6rem"}}>
+            ✓ Keyword pre-filled from your SEO Opportunities — review the settings below and click Generate
+          </div>
+        )}
 
         {/* Privacy notice — shown prominently per GDPR best practice */}
         <div className="cg-privacy">
