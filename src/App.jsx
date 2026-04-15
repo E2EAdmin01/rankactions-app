@@ -1350,6 +1350,7 @@ Return ONLY valid JSON — no markdown, no explanation:
     const [wordCount, setWordCount] = useState("1000");
     const [cta,       setCta]       = useState("");
     const [notes,     setNotes]     = useState(contentPreset?.notes || "");
+    const [prefilledKw] = useState(!!contentPreset?.kw); // remember if we arrived with a keyword
     const [loading,   setLoading]   = useState(false);
     const [output,    setOutput]    = useState(null);
     const [error,     setError]     = useState(null);
@@ -1370,8 +1371,8 @@ Return ONLY valid JSON — no markdown, no explanation:
       "Finalising meta tags…",
     ];
 
-    // Clear preset after first use so it doesn't re-apply on revisit
-    useEffect(()=>{ if(contentPreset) setContentPreset(null); },[]);
+    // Clear preset immediately so it doesn't re-apply on revisit
+    useEffect(()=>{ setContentPreset(null); },[]);
 
     const suggestedKw = siteData?.topOpportunities?.[0]?.keyword || "";
 
@@ -1542,7 +1543,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
         </div>
 
         {/* Pre-fill notice — shown when arriving from SEO Opportunities */}
-        {kw && contentPreset === null && (
+        {prefilledKw && (
           <div style={{background:"var(--gdim)",border:"1px solid rgba(15,219,138,.2)",borderRadius:10,padding:".85rem 1.1rem",fontSize:".85rem",color:"var(--green)",display:"flex",alignItems:"center",gap:".6rem"}}>
             ✓ Keyword pre-filled from your SEO Opportunities — review the settings below and click Generate
           </div>
@@ -1567,7 +1568,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
                 <input placeholder={suggestedKw || "e.g. sar support services uk"}
                   value={kw} onChange={e=>setKw(e.target.value)}
                   onKeyDown={e=>e.key==="Enter"&&kw.trim()&&!loading&&generate()}/>
-                {suggestedKw && !kw && (
+                {suggestedKw && !kw && !prefilledKw && (
                   <div className="cg-tip" style={{cursor:"pointer"}} onClick={()=>setKw(suggestedKw)}>
                     💡 Suggested from your dashboard: "{suggestedKw}" — click to use
                   </div>
