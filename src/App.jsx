@@ -1505,13 +1505,39 @@ STYLING:
               </div>
             )}
             {!loading && output && tab==="preview" && (
-              <div className="cg-preview">
-                <iframe
-                  src={URL.createObjectURL(new Blob([output], {type:"text/html"}))}
-                  sandbox="allow-same-origin allow-scripts"
-                  title="Article preview"
-                  style={{width:"100%",minHeight:500,border:"none",display:"block"}}
-                />
+              <div className="cg-preview" style={{padding:"1.5rem",background:"var(--s2)",display:"flex",flexDirection:"column",gap:"1rem",alignItems:"center"}}>
+                <div style={{background:"var(--s3)",border:"1px solid var(--border)",borderRadius:10,padding:"1rem 1.25rem",width:"100%",maxWidth:560,textAlign:"center"}}>
+                  <div style={{fontSize:".85rem",fontWeight:600,marginBottom:".35rem"}}>✓ Article generated successfully</div>
+                  <div style={{fontSize:".8rem",color:"var(--text2)",marginBottom:"1rem",lineHeight:1.6}}>
+                    Your article is ready. Use Copy HTML to paste it into your CMS, or Download to save the file. You can also open a full preview in a new tab.
+                  </div>
+                  <button
+                    style={{background:"var(--blue)",color:"#fff",border:"none",borderRadius:8,padding:".6rem 1.25rem",fontFamily:"var(--font)",fontSize:".875rem",fontWeight:600,cursor:"pointer"}}
+                    onClick={()=>{
+                      const w = window.open("","_blank");
+                      if(w){ w.document.open(); w.document.write(output); w.document.close(); }
+                    }}>
+                    🔍 Open full preview in new tab
+                  </button>
+                </div>
+                <div style={{width:"100%",maxWidth:760,background:"white",borderRadius:10,overflow:"hidden",boxShadow:"0 4px 24px rgba(0,0,0,.3)"}}>
+                  <div style={{background:"#f5f5f5",padding:".5rem 1rem",fontSize:".72rem",color:"#666",borderBottom:"1px solid #e0e0e0",fontFamily:"monospace"}}>
+                    Preview — scroll to read · {Math.round(output.length/1000)}kb
+                  </div>
+                  <div
+                    style={{maxHeight:600,overflowY:"auto",padding:"2rem",fontFamily:"system-ui,sans-serif",fontSize:"1rem",color:"#3d3b35",lineHeight:1.75}}
+                    dangerouslySetInnerHTML={{__html: output
+                      .replace(/<head[\s\S]*?<\/head>/i,"")
+                      .replace(/<\/?html[^>]*>/gi,"")
+                      .replace(/<\/?body[^>]*>/gi,"")
+                      .replace(/<nav[\s\S]*?<\/nav>/gi,"")
+                      .replace(/<footer[\s\S]*?<\/footer>/gi,"")
+                      .replace(/<!DOCTYPE[^>]*>/gi,"")
+                      .replace(/<script[\s\S]*?<\/script>/gi,"")
+                      .replace(/<style[\s\S]*?<\/style>/gi,"")
+                    }}
+                  />
+                </div>
               </div>
             )}
             {!loading && output && tab==="html" && (
