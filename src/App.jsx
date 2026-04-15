@@ -303,14 +303,14 @@ const CSS = `
 .cg-privacy-icon{flex-shrink:0;font-size:.9rem;margin-top:.05rem;}
 .cg-grid{display:grid;grid-template-columns:300px 1fr;gap:1.5rem;flex:1;}
 .cg-panel{background:var(--s1);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;}
-.cg-panel-hd{background:var(--s2);border-bottom:1px solid var(--border);padding:1rem 1.25rem;}
-.cg-panel-hd-title{font-size:.85rem;font-weight:700;margin-bottom:.15rem;}
-.cg-panel-hd-sub{font-size:.72rem;color:var(--text3);}
+.cg-panel-hd{background:var(--s3);border-bottom:1px solid var(--border);padding:1rem 1.25rem;}
+.cg-panel-hd-title{font-size:.85rem;font-weight:700;margin-bottom:.15rem;color:var(--text);}
+.cg-panel-hd-sub{font-size:.72rem;color:var(--text2);}
 .cg-panel-bd{padding:1rem 1.25rem;display:flex;flex-direction:column;gap:.85rem;flex:1;}
-.cg-field label{display:block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:.4rem;}
-.cg-field input,.cg-field select,.cg-field textarea{width:100%;background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:.6rem .8rem;color:var(--text);font-family:var(--font);font-size:.85rem;outline:none;transition:border-color .2s;}
-.cg-field input:focus,.cg-field select,.cg-field select:focus,.cg-field textarea:focus{border-color:var(--blue);}
-.cg-field select{cursor:pointer;}
+.cg-field label{display:block;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text2);margin-bottom:.4rem;}
+.cg-field input,.cg-field select,.cg-field textarea{width:100%;background:var(--s2);border:1.5px solid var(--border2);border-radius:8px;padding:.6rem .8rem;color:var(--text);font-family:var(--font);font-size:.85rem;outline:none;transition:border-color .2s;}
+.cg-field input:focus,.cg-field select:focus,.cg-field textarea:focus{border-color:var(--blue);}
+.cg-field select{cursor:pointer;color:var(--text);}
 .cg-field textarea{resize:vertical;min-height:72px;line-height:1.5;}
 .cg-field input::placeholder,.cg-field textarea::placeholder{color:var(--text3);}
 .cg-field-row{display:grid;grid-template-columns:1fr 1fr;gap:.65rem;}
@@ -349,7 +349,7 @@ const CSS = `
 .cg-code{flex:1;background:#0d1117;padding:1rem;overflow:auto;}
 .cg-code pre{font-family:var(--mono);font-size:.75rem;color:#a8d8d0;line-height:1.65;white-space:pre-wrap;word-break:break-word;}
 .cg-error{margin:1rem;padding:.85rem 1rem;background:var(--rdim);border:1px solid var(--red);border-radius:8px;font-size:.83rem;color:var(--red);line-height:1.6;}
-.cg-tip{font-size:.75rem;color:var(--text3);line-height:1.5;padding:.65rem .85rem;background:var(--s2);border-radius:7px;border-left:2px solid var(--blue);margin-top:.25rem;}
+.cg-tip{font-size:.75rem;color:var(--text2);line-height:1.5;padding:.65rem .85rem;background:var(--s3);border-radius:7px;border-left:2px solid var(--blue);margin-top:.25rem;}
 .cg-loading-msgs{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;padding:3rem;}
 .cg-loading-msgs .spinner{width:22px;height:22px;}
 .cg-loading-msg{font-size:.85rem;color:var(--text2);text-align:center;}
@@ -1506,7 +1506,12 @@ STYLING:
             )}
             {!loading && output && tab==="preview" && (
               <div className="cg-preview">
-                <iframe srcDoc={output} sandbox="allow-same-origin" title="Article preview"/>
+                <iframe
+                  src={URL.createObjectURL(new Blob([output], {type:"text/html"}))}
+                  sandbox="allow-same-origin allow-scripts"
+                  title="Article preview"
+                  style={{width:"100%",minHeight:500,border:"none",display:"block"}}
+                />
               </div>
             )}
             {!loading && output && tab==="html" && (
