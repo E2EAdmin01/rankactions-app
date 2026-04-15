@@ -354,6 +354,59 @@ const CSS = `
 .cg-loading-msgs .spinner{width:22px;height:22px;}
 .cg-loading-msg{font-size:.85rem;color:var(--text2);text-align:center;}
 @media(max-width:900px){.cg-grid{grid-template-columns:1fr;}}
+
+/* ── Admin panel ── */
+.admin-wrap{padding:2rem;flex:1;}
+.admin-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;}
+.admin-title{font-size:1.1rem;font-weight:700;letter-spacing:-.03em;}
+.admin-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.75rem;}
+.admin-stat{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;}
+.admin-stat-label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:.4rem;}
+.admin-stat-value{font-size:1.5rem;font-weight:700;font-family:var(--mono);letter-spacing:-.02em;}
+.admin-search{display:flex;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap;}
+.admin-search-input{flex:1;min-width:200px;background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:.6rem .9rem;color:var(--text);font-family:var(--font);font-size:.875rem;outline:none;}
+.admin-search-input:focus{border-color:var(--blue);}
+.admin-search-input::placeholder{color:var(--text3);}
+.admin-filter{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:.6rem .9rem;color:var(--text);font-family:var(--font);font-size:.875rem;outline:none;cursor:pointer;}
+.admin-table-wrap{background:var(--s1);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.admin-table{width:100%;border-collapse:collapse;}
+.admin-table th{text-align:left;padding:.7rem 1rem;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);border-bottom:1px solid var(--border);background:var(--s2);}
+.admin-table td{padding:.85rem 1rem;font-size:.85rem;border-bottom:1px solid var(--border);vertical-align:middle;}
+.admin-table tr:last-child td{border-bottom:none;}
+.admin-table tbody tr{cursor:pointer;transition:background .1s;}
+.admin-table tbody tr:hover td{background:var(--s2);}
+.admin-table tbody tr.disabled-row td{opacity:.45;}
+.plan-badge{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.2rem .55rem;border-radius:4px;}
+.plan-badge.free{background:var(--bdim);color:var(--blue);}
+.plan-badge.pro{background:var(--gdim);color:var(--green);}
+.status-badge{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.2rem .55rem;border-radius:4px;}
+.status-badge.active{background:var(--gdim);color:var(--green);}
+.status-badge.disabled{background:var(--rdim);color:var(--red);}
+
+/* ── User drawer ── */
+.drawer-overlay{position:fixed;inset:0;background:rgba(7,8,15,.6);z-index:200;}
+.drawer{position:fixed;right:0;top:0;bottom:0;width:420px;background:var(--s1);border-left:1px solid var(--border);z-index:201;overflow-y:auto;display:flex;flex-direction:column;}
+.drawer-head{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.drawer-close{background:none;border:none;color:var(--text3);font-size:1.3rem;cursor:pointer;padding:0;line-height:1;}
+.drawer-close:hover{color:var(--text);}
+.drawer-body{padding:1.5rem;flex:1;display:flex;flex-direction:column;gap:1.25rem;}
+.drawer-section-label{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--text3);margin-bottom:.65rem;}
+.drawer-field{background:var(--s2);border-radius:8px;padding:.75rem 1rem;}
+.drawer-field-label{font-size:.68rem;color:var(--text3);margin-bottom:.2rem;}
+.drawer-field-value{font-size:.9rem;color:var(--text);font-weight:500;word-break:break-all;}
+.drawer-field-value.mono{font-family:var(--mono);font-size:.8rem;}
+.drawer-actions{display:flex;flex-direction:column;gap:.6rem;margin-top:auto;padding-top:1.25rem;border-top:1px solid var(--border);}
+.drawer-btn{width:100%;padding:.7rem;border-radius:8px;font-family:var(--font);font-size:.875rem;font-weight:600;cursor:pointer;border:none;transition:opacity .15s;}
+.drawer-btn:hover{opacity:.88;}
+.drawer-btn.upgrade{background:var(--green);color:#000;}
+.drawer-btn.downgrade{background:var(--bdim);color:var(--blue);border:1px solid var(--blue);}
+.drawer-btn.disable{background:var(--adim);color:var(--amber);border:1px solid var(--amber);}
+.drawer-btn.enable{background:var(--gdim);color:var(--green);border:1px solid var(--green);}
+.drawer-btn.delete{background:var(--rdim);color:var(--red);border:1px solid var(--red);}
+.admin-empty{text-align:center;padding:4rem 2rem;color:var(--text3);}
+.admin-empty-icon{font-size:2rem;margin-bottom:.75rem;opacity:.3;}
+.admin-refresh{background:none;border:1px solid var(--border);border-radius:7px;padding:.45rem .9rem;color:var(--text2);font-family:var(--font);font-size:.8rem;cursor:pointer;}
+.admin-refresh:hover{border-color:var(--blue);color:var(--blue);}
 `;
 
 // ─── Demo fallback data ───────────────────────────────────────
@@ -509,6 +562,22 @@ export default function RankActions() {
     }
   }, []);
 
+  // ── Sync user data to Worker for admin panel ───────────────
+  useEffect(() => {
+    if (!userId && !user?.id) return;
+    fetch(`${WORKER_URL}/api/user/sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId,
+        clerkId:    user?.id,
+        plan,
+        sites,
+        aiFixCount,
+      })
+    }).catch(()=>{});
+  }, [plan, sites, aiFixCount]);
+
   // ── Fetch data when userId or site changes ──────────────────
   useEffect(() => {
     if (userId && selectedSite && screen !== "onboarding") fetchSiteData();
@@ -631,35 +700,41 @@ export default function RankActions() {
     if (!isPro) trackAiFixUsage();
     setModal(fix); setModalData(null); setModalLoading(true);
     try {
-      // Build rich context — top keywords, impressions, site name
-      const topKws = siteData?.keywords?.slice(0,8).map(k=>`"${k.keyword}" (pos #${k.position}, ${k.impressions} impressions/mo)`).join(", ") || "unknown";
-      const keyword = fix.title.match(/"([^"]+)"/)?.[1] || fix.current?.replace(/Not fully optimised for |"/g,"") || "";
+      // Build rich, page-specific context
+      const topKws     = siteData?.keywords?.slice(0,8).map(k=>`"${k.keyword}" (pos #${k.position}, ${k.impressions} impressions/mo)`).join(", ") || "unknown";
+      const keyword    = fix.title.match(/"([^"]+)"/)?.[1] || fix.current?.replace(/Not fully optimised for |"/g,"") || "";
+      const pageUrl    = fix.page ? `https://${selectedSite}${fix.page}` : `https://${selectedSite}`;
+      const allKws     = siteData?.keywords?.map(k=>k.keyword).join(", ") || "";
       const siteContext = siteData
-        ? `Site: ${selectedSite}. Top keywords from Search Console: ${topKws}. Avg position: ${siteData.totals?.avgPosition}, CTR: ${siteData.totals?.avgCtr}.`
+        ? `Site: ${selectedSite}. All ranking keywords: ${allKws}. Top keywords: ${topKws}. Avg position: ${siteData.totals?.avgPosition}, CTR: ${siteData.totals?.avgCtr}.`
         : `Site: ${selectedSite}.`;
 
       const txt = await callClaude(
-        `You are a senior SEO copywriter improving a real website's rankings.
+        `You are a senior SEO copywriter improving a SPECIFIC page on a real website.
 
 ${siteContext}
-Target keyword to optimise for: "${keyword}"
-Current position: ${fix.m1}
+Page being optimised: ${pageUrl}
+The SPECIFIC keyword this page needs to rank for: "${keyword}"
+Current ranking position: ${fix.m1}
 Goal: ${fix.m2}
+Fix type: ${fix.type} — ${fix.field}
 
-Generate 2 specific, ready-to-use alternatives. Each must:
-- Include the exact keyword "${keyword}" naturally
-- Be under 60 characters for title tags, under 160 for meta descriptions
-- Sound professional and compelling to a real visitor
-- Be completely specific — no placeholders, no generics
+CRITICAL RULES:
+- Every suggestion MUST include the exact phrase "${keyword}"
+- Write as if you know this specific website and page
+- No generic business language — make it specific to "${keyword}"
+- Title tags: 50-60 characters maximum
+- Meta descriptions: 145-155 characters maximum
+- Sound like a real copywriter wrote it, not an AI template
 
-Return ONLY valid JSON:
+Return ONLY valid JSON — no markdown, no explanation:
 {
-  "option1": "exact ready-to-use title tag or heading here",
-  "option2": "second specific alternative here",
-  "metaDesc": "compelling meta description including ${keyword} under 155 chars",
-  "tip": "one specific actionable next step for this keyword, max 12 words"
+  "option1": "specific title/heading containing ${keyword}",
+  "option2": "alternative specific title/heading containing ${keyword}",
+  "metaDesc": "specific meta description for this page containing ${keyword} — exactly 145-155 chars",
+  "tip": "one specific next step for this exact page and keyword, max 12 words"
 }`,
-        "Senior SEO copywriter. Return valid JSON only. No markdown. Every suggestion must be specific, ready-to-publish copy — never a template or placeholder."
+        "Senior SEO copywriter. Return valid JSON only. No markdown. Be SPECIFIC to the keyword and page provided — never generic."
       );
       setModalData(JSON.parse(txt.replace(/```json|```/g,"").trim()));
     } catch {
@@ -866,10 +941,11 @@ Return ONLY valid JSON:
           {id:"content",    icon:"✍", label:"Content"},
           {id:"reports",    icon:"📄", label:"Reports"},
           {id:"settings",   icon:"⚙", label:"Settings"},
+          ...(isAdmin ? [{id:"admin", icon:"🔐", label:"Admin"}] : []),
         ].map(n=>(
           <div key={n.id} className={`nav-item ${screen===n.id?"active":""}`}
             onClick={()=>{
-              if(n.id==="dashboard"||n.id==="siteDetail"||n.id==="content") setScreen(n.id);
+              if(["dashboard","siteDetail","content","admin"].includes(n.id)) setScreen(n.id);
             }}>
             <span style={{fontSize:"0.9rem"}}>{n.icon}</span>
             {n.label}
@@ -1233,31 +1309,99 @@ Return ONLY valid JSON:
     const [tab,       setTab]       = useState("preview");
     const [copied,    setCopied]    = useState(false);
     const [loadMsg,   setLoadMsg]   = useState("Researching your keyword…");
+    const [annotated, setAnnotated] = useState(false);
+    const [siteStyle, setSiteStyle] = useState(null);
+    const [scanning,  setScanning]  = useState(false);
 
     const loadMsgs = [
       "Researching your keyword…",
+      "Scanning your site for styles…",
       "Writing SEO-optimised content…",
       "Structuring headings and subheadings…",
       "Adding internal link suggestions…",
+      "Applying your site's design…",
       "Finalising meta tags…",
     ];
 
-    // Pre-fill keyword from current site's top opportunity
     const suggestedKw = siteData?.topOpportunities?.[0]?.keyword || "";
 
+    // Scan the user's site for colours, fonts and layout
+    const scanSite = async () => {
+      setScanning(true);
+      try {
+        const res  = await fetch(`${WORKER_URL}/api/scan-site?siteUrl=${encodeURIComponent(selectedSite)}`);
+        const data = await res.json();
+        if (data.scanned) setSiteStyle(data);
+      } catch(e) { console.warn("Site scan failed — continuing without styles"); }
+      setScanning(false);
+    };
+
     const seoStats = output ? {
-      titleLen:   (output.match(/<title>(.*?)<\/title>/i)?.[1] || "").length,
-      descLen:    (output.match(/meta name="description" content="(.*?)"/i)?.[1] || "").length,
-      h2Count:    (output.match(/<h2/gi) || []).length,
-      wordEst:    Math.round((output.replace(/<[^>]*>/g,"").split(/\s+/).length)),
-      hasKw:      kw && output.toLowerCase().includes(kw.toLowerCase()),
+      titleLen: (output.match(/<title>(.*?)<\/title>/i)?.[1]||"").length,
+      descLen:  (output.match(/meta name="description" content="(.*?)"/i)?.[1]||"").length,
+      h2Count:  (output.match(/<h2/gi)||[]).length,
+      h1Count:  (output.match(/<h1/gi)||[]).length,
+      wordEst:  Math.round(output.replace(/<[^>]*>/g,"").split(/\s+/).length),
+      hasKw:    kw && output.toLowerCase().includes(kw.toLowerCase()),
+      linkCount:(output.match(/<a\s/gi)||[]).length,
     } : null;
+
+    // Build annotated version of HTML — adds visible labels to SEO elements
+    const buildAnnotated = (html) => {
+      const style = `
+        <style>
+        .ra-label{display:inline-block;font-family:monospace;font-size:11px;font-weight:700;padding:2px 7px;border-radius:3px;margin-bottom:4px;letter-spacing:.5px;}
+        .ra-h1-wrap{border:2px solid #0fdb8a;border-radius:4px;padding:8px;margin:4px 0;position:relative;}
+        .ra-h2-wrap{border:2px solid #4d7bff;border-radius:4px;padding:6px;margin:4px 0;}
+        .ra-h3-wrap{border:2px dashed #f5a623;border-radius:4px;padding:4px;margin:4px 0;}
+        .ra-meta-wrap{border:2px solid #a855f7;border-radius:4px;padding:4px 8px;margin:4px 0;background:#faf0ff;}
+        .ra-link-wrap{border:1px solid #f03e5f;border-radius:3px;padding:1px 4px;}
+        .ra-label-h1{background:#0fdb8a;color:#000;}
+        .ra-label-h2{background:#4d7bff;color:#fff;}
+        .ra-label-h3{background:#f5a623;color:#000;}
+        .ra-label-link{background:#f03e5f;color:#fff;font-size:9px;}
+        .ra-label-meta{background:#a855f7;color:#fff;}
+        </style>`;
+      return html
+        .replace(/<h1([^>]*)>([\s\S]*?)<\/h1>/gi,
+          `<div class="ra-h1-wrap"><span class="ra-label ra-label-h1">H1 — Primary keyword heading</span><h1$1>$2</h1></div>`)
+        .replace(/<h2([^>]*)>([\s\S]*?)<\/h2>/gi,
+          `<div class="ra-h2-wrap"><span class="ra-label ra-label-h2">H2 — Section heading</span><h2$1>$2</h2></div>`)
+        .replace(/<h3([^>]*)>([\s\S]*?)<\/h3>/gi,
+          `<div class="ra-h3-wrap"><span class="ra-label ra-label-h3">H3 — Subsection heading</span><h3$1>$2</h3></div>`)
+        .replace(/<a\s([^>]*)>([\s\S]*?)<\/a>/gi,
+          `<span class="ra-link-wrap"><span class="ra-label ra-label-link">LINK</span><a $1>$2</a></span>`)
+        .replace(/<\/head>/i, `${style}</head>`);
+    };
 
     const generate = async () => {
       if (!kw.trim()) return;
       setLoading(true); setError(null); setOutput(null);
       let mi = 0;
       const iv = setInterval(()=>{ mi=(mi+1)%loadMsgs.length; setLoadMsg(loadMsgs[mi]); }, 3200);
+
+      // Scan site for styles if not already done
+      let style = siteStyle;
+      if (!style) {
+        try {
+          const res  = await fetch(`${WORKER_URL}/api/scan-site?siteUrl=${encodeURIComponent(selectedSite)}`);
+          const data = await res.json();
+          if (data.scanned) { style = data; setSiteStyle(data); }
+        } catch(e) {}
+      }
+
+      // Build style context from scan
+      const styleContext = style ? `
+SITE DESIGN — match this as closely as possible:
+- Brand name: ${style.brandName}
+- Detected colours: ${style.colors?.slice(0,8).join(', ') || 'not detected'}
+- Primary background: ${style.primaryBg || 'white'}
+- Primary text colour: ${style.primaryText || '#333'}
+- Fonts detected: ${style.fonts?.join(', ') || 'system-ui'}
+- Google Fonts URLs: ${style.gFonts?.join(', ') || 'none'}
+- Nav links to replicate: ${style.navLinks?.join(' | ') || 'none'}
+Use these exact colours and fonts in the generated HTML. Import the Google Fonts if available.` : '';
+
       try {
         const prompt = `You are an expert SEO content writer. Generate a complete, production-ready HTML blog post.
 
@@ -1271,34 +1415,29 @@ INPUTS:
 - Primary CTA: ${cta.trim() || "Contact us to find out more"}
 - Additional notes: ${notes.trim() || "none"}
 - Website: ${selectedSite}
+${styleContext}
 
-DATA NOTICE: This content is being generated for ${selectedSite}. Only the keyword, business context and tone provided above are sent to the AI. No personal data is included.
+DATA NOTICE: Only keyword, business context and tone are sent to AI. No personal data included.
 
 BUILD THIS STRUCTURE:
-1. HEAD: title tag (50-60 chars, keyword first), meta description (145-155 chars, include keyword), canonical URL (https://${selectedSite}/[keyword-slug]/), robots, Open Graph tags, JSON-LD Article schema with author, datePublished today
-2. SIMPLE NAV: white background, site name left, 3-4 nav links right
-3. HERO SECTION: dark background (#0f0e0c), H1 with exact keyword, subtitle, author and date meta, read time estimate
+1. HEAD: title tag (50-60 chars, keyword first), meta description (145-155 chars, include keyword), canonical URL (https://${selectedSite}/[keyword-slug]/), robots, Open Graph tags, JSON-LD Article schema, datePublished today
+2. NAV: replicate detected nav links if available, otherwise simple nav with site name and 3-4 links
+3. HERO SECTION: H1 containing exact keyword "${kw.trim()}", subtitle, author, date, read time
 4. ARTICLE BODY: max-width 760px, margin auto, padding 3rem 2rem
-   - Strong opening paragraph with keyword in first 100 words
-   - 4-6 H2 sections with keyword-rich headings
+   - Opening paragraph with keyword in first 100 words
+   - 4-6 H2 sections (keyword-rich headings)
    - At least one H3 subsection
-   - One highlighted tip/callout box (border-left: 3px solid #0fdb8a)
-   - Natural keyword usage throughout (not stuffed)
-   - Internal link placeholders: <a href="/[related-page]/">[related topic]</a>
-5. CTA SECTION: background #0f0e0c, centred, heading, subtext, green button: "${cta.trim() || "Get in touch today"}"
-6. FOOTER: simple, site name, copyright ${new Date().getFullYear()}
+   - One tip/callout box (border-left: 3px solid accent colour)
+   - Natural keyword usage — no stuffing
+   - 3-5 internal links: <a href="/[related-slug]/">[related topic]</a>
+   - Each internal link should have a comment: <!-- Internal link: link to your [page type] page -->
+5. CTA SECTION: "${cta.trim() || "Get in touch today"}" button
+6. FOOTER: site name, copyright ${new Date().getFullYear()}
 
-STYLING:
-- Font: system-ui, -apple-system, sans-serif
-- Body text: #3d3b35, line-height 1.75, font-size 1.05rem
-- Headings: #0f0e0c, font-weight 700
-- Accent colour: #0fdb8a
-- All links: #0fdb8a
-- Mobile responsive with one media query at 768px
-- Clean, minimal, fast-loading — no external dependencies except Google Fonts optional`;
+IMPORTANT — Label internal links clearly so non-technical users know what they are.`;
 
         const text = await callClaude(prompt,
-          "You are an expert SEO content writer. Output ONLY raw HTML. No markdown. No explanations. Start with <!DOCTYPE html>.",
+          "Expert SEO content writer. Output ONLY raw HTML starting with <!DOCTYPE html>. No markdown. No explanations.",
           "longform"
         );
         clearInterval(iv);
@@ -1417,6 +1556,11 @@ STYLING:
               <button className="cg-gen-btn" disabled={!kw.trim()||loading} onClick={generate}>
                 {loading ? <><span className="spinner-sm"/>{" Generating…"}</> : "✨ Generate article"}
               </button>
+              <button
+                style={{width:"100%",padding:".6rem",background:"var(--s3)",border:"1px solid var(--border)",borderRadius:8,color:siteStyle?"var(--green)":"var(--text2)",fontFamily:"var(--font)",fontSize:".82rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:".5rem"}}
+                onClick={scanSite} disabled={scanning}>
+                {scanning ? <><span className="spinner-sm"/> Scanning site…</> : siteStyle ? "✓ Site styles scanned — regenerate to apply" : "🎨 Scan site for colours & fonts"}
+              </button>
               <div className="cg-tip">
                 ⏱ Generation takes 20–40 seconds. The article is created in your browser and never stored on our servers.
               </div>
@@ -1431,6 +1575,13 @@ STYLING:
                 <span>{loading ? loadMsg : output ? "Article ready" : error ? "Error" : "Ready to generate"}</span>
               </div>
               <div className="cg-actions">
+                {output && (
+                  <button
+                    style={{padding:".35rem .85rem",borderRadius:6,border:`1px solid ${annotated?"var(--green)":"var(--border)"}`,background:annotated?"var(--gdim)":"var(--s1)",color:annotated?"var(--green)":"var(--text2)",fontFamily:"var(--font)",fontSize:".775rem",cursor:"pointer"}}
+                    onClick={()=>setAnnotated(p=>!p)}>
+                    {annotated ? "✓ Labels on" : "🏷 Show labels"}
+                  </button>
+                )}
                 <button className="cg-act" disabled={!output} onClick={copyHtml}>
                   {copied ? "✓ Copied" : "📋 Copy HTML"}
                 </button>
@@ -1466,15 +1617,27 @@ STYLING:
                   </div>
                 </div>
                 <div className="cg-seo-c">
+                  <div className="cg-seo-l">H1 heading</div>
+                  <div className={`cg-seo-v ${seoStats.h1Count===1?"ok":"warn"}`}>
+                    {seoStats.h1Count} found {seoStats.h1Count===1?"✓ Correct":"⚠ Should be 1"}
+                  </div>
+                </div>
+                <div className="cg-seo-c">
+                  <div className="cg-seo-l">H2 headings</div>
+                  <div className={`cg-seo-v ${seoStats.h2Count>=3?"ok":"warn"}`}>
+                    {seoStats.h2Count} found {seoStats.h2Count>=3?"✓ Good":"⚠ Add more"}
+                  </div>
+                </div>
+                <div className="cg-seo-c">
                   <div className="cg-seo-l">Keyword present</div>
                   <div className={`cg-seo-v ${seoStats.hasKw?"ok":"warn"}`}>
                     {seoStats.hasKw?"✓ Found in content":"⚠ Not detected"}
                   </div>
                 </div>
                 <div className="cg-seo-c">
-                  <div className="cg-seo-l">H2 headings</div>
-                  <div className={`cg-seo-v ${seoStats.h2Count>=3?"ok":"warn"}`}>
-                    {seoStats.h2Count} headings {seoStats.h2Count>=3?"✓ Good":"⚠ Add more"}
+                  <div className="cg-seo-l">Internal links</div>
+                  <div className={`cg-seo-v ${seoStats.linkCount>=3?"ok":"warn"}`}>
+                    {seoStats.linkCount} links {seoStats.linkCount>=3?"✓ Good":"⚠ Add more"}
                   </div>
                 </div>
                 <div className="cg-seo-c">
@@ -1487,6 +1650,19 @@ STYLING:
                   <div className="cg-seo-l">Data stored</div>
                   <div className="cg-seo-v ok">✓ None — browser only</div>
                 </div>
+              </div>
+            )}
+
+            {/* Legend shown when annotated */}
+            {output && annotated && tab==="preview" && (
+              <div style={{display:"flex",gap:".5rem",padding:".65rem 1rem",background:"var(--s3)",borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
+                <span style={{fontSize:".72rem",color:"var(--text2)",marginRight:".25rem"}}>Labels:</span>
+                {[["H1","#0fdb8a","#000","Primary keyword heading"],["H2","#4d7bff","#fff","Section heading"],["H3","#f5a623","#000","Subsection"],["LINK","#f03e5f","#fff","Internal link"]].map(([l,bg,c,tip])=>(
+                  <span key={l} style={{display:"inline-flex",alignItems:"center",gap:".3rem"}}>
+                    <span style={{background:bg,color:c,fontSize:".65rem",fontWeight:700,padding:"1px 6px",borderRadius:3,fontFamily:"monospace"}}>{l}</span>
+                    <span style={{fontSize:".72rem",color:"var(--text2)"}}>{tip}</span>
+                  </span>
+                ))}
               </div>
             )}
 
@@ -1507,9 +1683,9 @@ STYLING:
             )}
             {!loading && output && tab==="preview" && (
               <div className="cg-preview" style={{display:"flex",flexDirection:"column",background:"var(--s2)"}}>
-                <div style={{padding:"1rem 1.25rem",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid var(--border)",flexWrap:"wrap",gap:".5rem"}}>
-                  <div style={{fontSize:".82rem",color:"var(--text2)"}}>
-                    ✓ Article ready · {Math.round(output.length/1000)}kb · scroll to read
+                <div style={{padding:".65rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid var(--border)",flexWrap:"wrap",gap:".5rem"}}>
+                  <div style={{fontSize:".78rem",color:"var(--text2)"}}>
+                    {annotated ? "🏷 Labels visible — toggle off to see clean version" : "Clean preview — toggle labels to see SEO structure"}
                   </div>
                   <button
                     style={{background:"var(--blue)",color:"#fff",border:"none",borderRadius:7,padding:".4rem .9rem",fontFamily:"var(--font)",fontSize:".8rem",fontWeight:600,cursor:"pointer"}}
@@ -1521,7 +1697,8 @@ STYLING:
                   </button>
                 </div>
                 <iframe
-                  ref={el=>{ if(el){ const d=el.contentDocument||el.contentWindow?.document; if(d){d.open();d.write(output);d.close();} } }}
+                  key={annotated ? "annotated" : "clean"}
+                  ref={el=>{ if(el){ const d=el.contentDocument||el.contentWindow?.document; if(d){d.open();d.write(annotated ? buildAnnotated(output) : output);d.close();} } }}
                   style={{width:"100%",minHeight:580,border:"none",background:"white",flex:1}}
                   title="Article preview"
                 />
@@ -1534,6 +1711,266 @@ STYLING:
             )}
           </div>
         </div>
+      </div>
+    );
+  };
+
+  // ── Admin — replace with your Clerk user ID once you have it ──
+  const ADMIN_CLERK_ID = "user_3CMXybSmGDdSNc2caXRZraMoZdt";
+  const isAdmin = user?.id === ADMIN_CLERK_ID;
+
+  // ─────────────────────────────────────────────────────────────
+  // ADMIN PANEL
+  // ─────────────────────────────────────────────────────────────
+  const AdminPanel = () => {
+    const [users,      setUsers]      = useState([]);
+    const [loading,    setLoading]    = useState(true);
+    const [error,      setError]      = useState(null);
+    const [search,     setSearch]     = useState("");
+    const [filter,     setFilter]     = useState("all");
+    const [selected,   setSelected]   = useState(null);
+    const [saving,     setSaving]     = useState(false);
+    const [adminSecret,setAdminSecret]= useState(localStorage.getItem("ra_admin_secret")||"");
+    const [secretInput,setSecretInput]= useState("");
+    const [authed,     setAuthed]     = useState(!!localStorage.getItem("ra_admin_secret"));
+
+    const fetchUsers = async (secret) => {
+      setLoading(true); setError(null);
+      try {
+        const res  = await fetch(`${WORKER_URL}/api/admin/users`, {
+          headers: { "x-admin-secret": secret || adminSecret }
+        });
+        if (res.status === 401) { setError("Invalid admin secret"); setAuthed(false); return; }
+        const data = await res.json();
+        setUsers(data.users || []);
+      } catch(e) { setError("Failed to load users"); }
+      setLoading(false);
+    };
+
+    useEffect(()=>{ if(authed && adminSecret) fetchUsers(adminSecret); },[authed]);
+
+    const updateUser = async (userId, changes) => {
+      setSaving(true);
+      try {
+        await fetch(`${WORKER_URL}/api/admin/user/${userId}`, {
+          method:"POST",
+          headers:{ "Content-Type":"application/json", "x-admin-secret": adminSecret },
+          body: JSON.stringify(changes)
+        });
+        setUsers(prev => prev.map(u => u.userId===userId ? {...u,...changes} : u));
+        setSelected(prev => prev?.userId===userId ? {...prev,...changes} : prev);
+      } catch(e) { alert("Update failed"); }
+      setSaving(false);
+    };
+
+    const deleteUser = async (userId) => {
+      if (!window.confirm("Permanently delete this user and all their data? This cannot be undone.")) return;
+      setSaving(true);
+      try {
+        await fetch(`${WORKER_URL}/api/admin/user/${userId}`, {
+          method:"DELETE",
+          headers:{ "x-admin-secret": adminSecret }
+        });
+        setUsers(prev => prev.filter(u => u.userId!==userId));
+        setSelected(null);
+      } catch(e) { alert("Delete failed"); }
+      setSaving(false);
+    };
+
+    const filtered = users.filter(u => {
+      const matchSearch = !search || u.email?.toLowerCase().includes(search.toLowerCase()) || u.name?.toLowerCase().includes(search.toLowerCase());
+      const matchFilter = filter==="all" || (filter==="pro"&&u.plan==="pro") || (filter==="free"&&u.plan!=="pro") || (filter==="disabled"&&u.disabled);
+      return matchSearch && matchFilter;
+    });
+
+    const stats = {
+      total:    users.length,
+      pro:      users.filter(u=>u.plan==="pro").length,
+      free:     users.filter(u=>u.plan!=="pro").length,
+      disabled: users.filter(u=>u.disabled).length,
+    };
+
+    const fmt = (iso) => iso ? new Date(iso).toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"}) : "—";
+
+    // Auth gate — enter admin secret
+    if (!authed) return (
+      <div className="admin-wrap" style={{maxWidth:420,margin:"4rem auto",textAlign:"center"}}>
+        <div style={{fontSize:"1.5rem",marginBottom:".5rem"}}>🔐</div>
+        <div style={{fontSize:"1rem",fontWeight:700,marginBottom:".35rem"}}>Admin access</div>
+        <div style={{fontSize:".85rem",color:"var(--text2)",marginBottom:"1.5rem"}}>Enter your admin secret to continue</div>
+        <input
+          type="password" placeholder="Admin secret"
+          value={secretInput} onChange={e=>setSecretInput(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter"&&secretInput.trim()){ localStorage.setItem("ra_admin_secret",secretInput.trim()); setAdminSecret(secretInput.trim()); setAuthed(true); }}}
+          style={{width:"100%",background:"var(--s2)",border:"1px solid var(--border)",borderRadius:8,padding:".75rem 1rem",color:"var(--text)",fontFamily:"var(--font)",fontSize:".9rem",outline:"none",marginBottom:".75rem"}}
+        />
+        <button style={{width:"100%",padding:".75rem",background:"var(--blue)",color:"#fff",border:"none",borderRadius:8,fontFamily:"var(--font)",fontSize:".9rem",fontWeight:600,cursor:"pointer"}}
+          onClick={()=>{ if(secretInput.trim()){ localStorage.setItem("ra_admin_secret",secretInput.trim()); setAdminSecret(secretInput.trim()); setAuthed(true); }}}>
+          Continue
+        </button>
+        {error && <div style={{marginTop:".75rem",color:"var(--red)",fontSize:".85rem"}}>{error}</div>}
+      </div>
+    );
+
+    return (
+      <div className="admin-wrap">
+        <div className="admin-header">
+          <div>
+            <div className="admin-title">Admin Panel</div>
+            <div style={{fontSize:".8rem",color:"var(--text2)",marginTop:".2rem"}}>Manage RankActions users</div>
+          </div>
+          <div style={{display:"flex",gap:".75rem",alignItems:"center"}}>
+            <button className="admin-refresh" onClick={()=>fetchUsers(adminSecret)} disabled={loading}>
+              {loading?"Loading…":"↻ Refresh"}
+            </button>
+            <button className="admin-refresh" style={{color:"var(--red)",borderColor:"var(--red)"}}
+              onClick={()=>{ localStorage.removeItem("ra_admin_secret"); setAuthed(false); setAdminSecret(""); }}>
+              Sign out
+            </button>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="admin-stats">
+          {[["Total users",stats.total,"var(--text)"],["Pro",stats.pro,"var(--green)"],["Free",stats.free,"var(--blue)"],["Disabled",stats.disabled,"var(--red)"]].map(([l,v,c])=>(
+            <div key={l} className="admin-stat">
+              <div className="admin-stat-label">{l}</div>
+              <div className="admin-stat-value" style={{color:c}}>{v}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Search + filter */}
+        <div className="admin-search">
+          <input className="admin-search-input" placeholder="Search by email or name…"
+            value={search} onChange={e=>setSearch(e.target.value)}/>
+          <select className="admin-filter" value={filter} onChange={e=>setFilter(e.target.value)}>
+            <option value="all">All users</option>
+            <option value="pro">Pro only</option>
+            <option value="free">Free only</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </div>
+
+        {/* Table */}
+        {error && <div style={{color:"var(--red)",fontSize:".875rem",marginBottom:"1rem"}}>⚠ {error}</div>}
+        {loading ? (
+          <div className="admin-empty"><div className="spinner" style={{width:20,height:20,margin:"0 auto"}}/></div>
+        ) : filtered.length === 0 ? (
+          <div className="admin-empty"><div className="admin-empty-icon">👥</div><div>No users found</div></div>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Plan</th>
+                  <th>Sites</th>
+                  <th>AI fixes used</th>
+                  <th>Signed up</th>
+                  <th>Last seen</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(u=>(
+                  <tr key={u.userId} className={u.disabled?"disabled-row":""} onClick={()=>setSelected(u)}>
+                    <td>
+                      <div style={{fontWeight:600}}>{u.name || "—"}</div>
+                      <div style={{fontSize:".75rem",color:"var(--text2)"}}>{u.email}</div>
+                    </td>
+                    <td><span className={`plan-badge ${u.plan==="pro"?"pro":"free"}`}>{u.plan||"free"}</span></td>
+                    <td style={{fontFamily:"var(--mono)",fontSize:".8rem"}}>{(u.sites||[]).length}</td>
+                    <td style={{fontFamily:"var(--mono)",fontSize:".8rem"}}>{u.aiFixCount||0}</td>
+                    <td style={{fontSize:".8rem",color:"var(--text2)"}}>{fmt(u.signedUpAt)}</td>
+                    <td style={{fontSize:".8rem",color:"var(--text2)"}}>{fmt(u.lastSeenAt)}</td>
+                    <td><span className={`status-badge ${u.disabled?"disabled":"active"}`}>{u.disabled?"Disabled":"Active"}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* User drawer */}
+        {selected && <>
+          <div className="drawer-overlay" onClick={()=>setSelected(null)}/>
+          <div className="drawer">
+            <div className="drawer-head">
+              <div>
+                <div style={{fontWeight:700,fontSize:".95rem"}}>{selected.name||"User"}</div>
+                <div style={{fontSize:".78rem",color:"var(--text2)"}}>{selected.email}</div>
+              </div>
+              <button className="drawer-close" onClick={()=>setSelected(null)}>✕</button>
+            </div>
+            <div className="drawer-body">
+              <div>
+                <div className="drawer-section-label">Account</div>
+                <div style={{display:"flex",flexDirection:"column",gap:".5rem"}}>
+                  {[
+                    ["User ID",     selected.userId,     true],
+                    ["Clerk ID",    selected.clerkId||"—",true],
+                    ["Email",       selected.email,      false],
+                    ["Signed up",   fmt(selected.signedUpAt), false],
+                    ["Last seen",   fmt(selected.lastSeenAt), false],
+                    ["Login count", selected.loginCount||0,  false],
+                  ].map(([label,value,mono])=>(
+                    <div key={label} className="drawer-field">
+                      <div className="drawer-field-label">{label}</div>
+                      <div className={`drawer-field-value ${mono?"mono":""}`}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="drawer-section-label">Plan & usage</div>
+                <div style={{display:"flex",flexDirection:"column",gap:".5rem"}}>
+                  <div className="drawer-field">
+                    <div className="drawer-field-label">Current plan</div>
+                    <div className="drawer-field-value"><span className={`plan-badge ${selected.plan==="pro"?"pro":"free"}`}>{selected.plan||"free"}</span></div>
+                  </div>
+                  <div className="drawer-field">
+                    <div className="drawer-field-label">AI fixes used this month</div>
+                    <div className="drawer-field-value">{selected.aiFixCount||0}</div>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div className="drawer-section-label">Sites ({(selected.sites||[]).length})</div>
+                {(selected.sites||[]).length===0
+                  ? <div style={{fontSize:".82rem",color:"var(--text3)"}}>No sites added yet</div>
+                  : (selected.sites||[]).map((s,i)=>(
+                      <div key={i} className="drawer-field" style={{marginBottom:".4rem"}}>
+                        <div className="drawer-field-value mono">{s}</div>
+                      </div>
+                    ))
+                }
+              </div>
+              <div className="drawer-actions">
+                <div className="drawer-section-label">Actions</div>
+                {selected.plan!=="pro"
+                  ? <button className="drawer-btn upgrade" disabled={saving} onClick={()=>updateUser(selected.userId,{plan:"pro"})}>
+                      ↑ Upgrade to Pro
+                    </button>
+                  : <button className="drawer-btn downgrade" disabled={saving} onClick={()=>updateUser(selected.userId,{plan:"free"})}>
+                      ↓ Downgrade to Free
+                    </button>
+                }
+                {selected.disabled
+                  ? <button className="drawer-btn enable" disabled={saving} onClick={()=>updateUser(selected.userId,{disabled:false})}>
+                      ✓ Re-enable account
+                    </button>
+                  : <button className="drawer-btn disable" disabled={saving} onClick={()=>updateUser(selected.userId,{disabled:true})}>
+                      ⊘ Disable account
+                    </button>
+                }
+                <button className="drawer-btn delete" disabled={saving} onClick={()=>deleteUser(selected.userId)}>
+                  🗑 Delete user permanently
+                </button>
+              </div>
+            </div>
+          </div>
+        </>}
       </div>
     );
   };
@@ -1551,6 +1988,8 @@ STYLING:
           {screen==="dashboard"  && <DashboardContent/>}
           {screen==="siteDetail" && <SiteDetailContent/>}
           {screen==="content"    && <ContentGenerator/>}
+          {screen==="admin"      && isAdmin && <AdminPanel/>}
+          {screen==="admin"      && !isAdmin && <div className="content" style={{textAlign:"center",paddingTop:"4rem",color:"var(--text3)"}}>Access denied.</div>}
         </div>
       </div>
       {modal        && <FixModal/>}
