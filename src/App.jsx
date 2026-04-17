@@ -287,6 +287,7 @@ const CSS = `
 /* ── User plan badge in topbar ── */
 .plan-pill{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.2rem .55rem;border-radius:5px;background:var(--bdim);color:var(--blue);}
 .plan-pill.pro{background:var(--gdim);color:var(--green);}
+.plan-pill.agency{background:var(--bdim);color:#a855f7;border:1px solid rgba(168,85,247,.3);}
 
 /* ── Upgrade prompt ── */
 .upgrade-wall{background:var(--s2);border:1.5px dashed var(--border2);border-radius:12px;padding:2rem;text-align:center;margin:1rem 0;}
@@ -397,6 +398,7 @@ const CSS = `
 .plan-badge{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.2rem .55rem;border-radius:4px;}
 .plan-badge.free{background:var(--bdim);color:var(--blue);}
 .plan-badge.pro{background:var(--gdim);color:var(--green);}
+.plan-badge.agency{background:rgba(168,85,247,.15);color:#a855f7;border:1px solid rgba(168,85,247,.3);}
 .status-badge{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.2rem .55rem;border-radius:4px;}
 .status-badge.active{background:var(--gdim);color:var(--green);}
 .status-badge.disabled{background:var(--rdim);color:var(--red);}
@@ -671,7 +673,8 @@ export default function RankActions() {
   const [planBilling,  setPlanBilling]  = useState("monthly"); // for plan selection screen
 
   // ── Plan helpers ────────────────────────────────────────────
-  const isPro = plan === "pro";
+  const isAgency = plan === "agency";
+  const isPro    = plan === "pro" || isAgency; // agency gets all Pro features
   const AI_FIX_LIMIT = 5; // free tier monthly limit
   const aiFixesLeft = Math.max(0, AI_FIX_LIMIT - aiFixCount);
 
@@ -1139,8 +1142,8 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           </div>
         </div>
         <button className="plan-continue-btn" onClick={()=>{
-          setPlan(selPlan==="agency"?"pro":selPlan); // treat agency as pro until Stripe
-          localStorage.setItem("rankactions_plan", selPlan==="agency"?"pro":selPlan);
+          setPlan(selPlan);
+          localStorage.setItem("rankactions_plan", selPlan);
           localStorage.setItem("rankactions_plan_chosen", "1");
           localStorage.setItem("rankactions_billing", planBilling);
           setShowPlan(false);
@@ -1300,7 +1303,9 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         {dataLoading  ? <span className="topbar-badge demo">⏳ Fetching…</span>
          : isConnected && siteData ? <span className="topbar-badge">✓ Live data</span>
          : <span className="topbar-badge demo">⚠ Demo data</span>}
-        <span className={`plan-pill ${plan==="pro"?"pro":""}`}>{plan==="pro"?"Pro":"Free"}</span>
+        <span className={`plan-pill ${plan==="pro"?"pro":plan==="agency"?"agency":""}`}>
+          {plan==="agency"?"Agency":plan==="pro"?"Pro":"Free"}
+        </span>
         {isConnected
           ? <button className="disconnect-btn" onClick={disconnect}>Disconnect GSC</button>
           : <button className="connect-btn" onClick={()=>window.location.href=`${WORKER_URL}/auth/google`}>🔗 Connect Google</button>}
@@ -1989,7 +1994,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           setPlan("pro");
           localStorage.setItem("rankactions_plan","pro");
           setShowUpgrade(false);
-          alert(`Stripe payments coming in Phase 2 — plan set to Pro for testing. (${billing === "annual" ? "£500/year" : "£50/month"} selected)`);
+          alert("Stripe payments coming in Phase 2 — plan set to Pro for testing.");
         }}>
           {billing==="annual" ? "Upgrade to Pro — £500/year" : "Upgrade to Pro — £50/month"}
         </button>
@@ -2502,14 +2507,19 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
 
     const filtered = users.filter(u => {
       const matchSearch = !search || u.email?.toLowerCase().includes(search.toLowerCase()) || u.name?.toLowerCase().includes(search.toLowerCase());
-      const matchFilter = filter==="all" || (filter==="pro"&&u.plan==="pro") || (filter==="free"&&u.plan!=="pro") || (filter==="disabled"&&u.disabled);
+      const matchFilter = filter==="all"
+        || (filter==="agency"  && u.plan==="agency")
+        || (filter==="pro"     && u.plan==="pro")
+        || (filter==="free"    && (!u.plan||u.plan==="free"))
+        || (filter==="disabled"&& u.disabled);
       return matchSearch && matchFilter;
     });
 
     const stats = {
       total:    users.length,
       pro:      users.filter(u=>u.plan==="pro").length,
-      free:     users.filter(u=>u.plan!=="pro").length,
+      agency:   users.filter(u=>u.plan==="agency").length,
+      free:     users.filter(u=>!u.plan||u.plan==="free").length,
       disabled: users.filter(u=>u.disabled).length,
     };
 
@@ -2555,7 +2565,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
 
         {/* Stats */}
         <div className="admin-stats">
-          {[["Total users",stats.total,"var(--text)"],["Pro",stats.pro,"var(--green)"],["Free",stats.free,"var(--blue)"],["Disabled",stats.disabled,"var(--red)"]].map(([l,v,c])=>(
+          {[["Total users",stats.total,"var(--text)"],["Pro",stats.pro,"var(--green)"],["Agency",stats.agency,"#a855f7"],["Free",stats.free,"var(--blue)"],["Disabled",stats.disabled,"var(--red)"]].map(([l,v,c])=>(
             <div key={l} className="admin-stat">
               <div className="admin-stat-label">{l}</div>
               <div className="admin-stat-value" style={{color:c}}>{v}</div>
@@ -2569,6 +2579,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
             value={search} onChange={e=>setSearch(e.target.value)}/>
           <select className="admin-filter" value={filter} onChange={e=>setFilter(e.target.value)}>
             <option value="all">All users</option>
+            <option value="agency">Agency only</option>
             <option value="pro">Pro only</option>
             <option value="free">Free only</option>
             <option value="disabled">Disabled</option>
@@ -2602,7 +2613,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
                       <div style={{fontWeight:600}}>{u.name || "—"}</div>
                       <div style={{fontSize:".75rem",color:"var(--text2)"}}>{u.email}</div>
                     </td>
-                    <td><span className={`plan-badge ${u.plan==="pro"?"pro":"free"}`}>{u.plan||"free"}</span></td>
+                    <td><span className={`plan-badge ${u.plan==="agency"?"agency":u.plan==="pro"?"pro":"free"}`}>{u.plan||"free"}</span></td>
                     <td style={{fontFamily:"var(--mono)",fontSize:".8rem"}}>{(u.sites||[]).length}</td>
                     <td style={{fontFamily:"var(--mono)",fontSize:".8rem"}}>{u.aiFixCount||0}</td>
                     <td style={{fontSize:".8rem",color:"var(--text2)"}}>{fmt(u.signedUpAt)}</td>
@@ -2671,14 +2682,21 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
               </div>
               <div className="drawer-actions">
                 <div className="drawer-section-label">Actions</div>
-                {selected.plan!=="pro"
-                  ? <button className="drawer-btn upgrade" disabled={saving} onClick={()=>updateUser(selected.userId,{plan:"pro"})}>
-                      ↑ Upgrade to Pro
-                    </button>
-                  : <button className="drawer-btn downgrade" disabled={saving} onClick={()=>updateUser(selected.userId,{plan:"free"})}>
-                      ↓ Downgrade to Free
-                    </button>
-                }
+                {selected.plan!=="agency" && (
+                  <button className="drawer-btn upgrade" style={{background:"#a855f7"}} disabled={saving} onClick={()=>updateUser(selected.userId,{plan:"agency"})}>
+                    ↑ Upgrade to Agency
+                  </button>
+                )}
+                {selected.plan!=="pro" && (
+                  <button className="drawer-btn upgrade" disabled={saving} onClick={()=>updateUser(selected.userId,{plan:"pro"})}>
+                    {selected.plan==="agency" ? "↓ Downgrade to Pro" : "↑ Upgrade to Pro"}
+                  </button>
+                )}
+                {selected.plan!=="free" && (
+                  <button className="drawer-btn downgrade" disabled={saving} onClick={()=>updateUser(selected.userId,{plan:"free"})}>
+                    ↓ Downgrade to Free
+                  </button>
+                )}
                 {selected.disabled
                   ? <button className="drawer-btn enable" disabled={saving} onClick={()=>updateUser(selected.userId,{disabled:false})}>
                       ✓ Re-enable account
