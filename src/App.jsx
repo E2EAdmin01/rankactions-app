@@ -685,10 +685,51 @@ export default function RankActions() {
     localStorage.setItem("rankactions_ai_fix_usage", JSON.stringify({ count:newCount, month:thisMonth }));
   };
 
-  // ── Show plan selection on first sign-in ───────────────────
+  // ── Fetch plan from Worker on Clerk sign-in ────────────────
+  // This ensures plan persists across browsers/devices
+  // Falls back to localStorage if Worker has no record yet
+  useEffect(() => {
+    if (!isSignedIn || !user?.id) return;
+    const clerkId = user.id;
+    const userId  = localStorage.getItem("rankactions_userId") || "";
+
+    fetch(`${WORKER_URL}/api/user/profile?clerkId=${encodeURIComponent(clerkId)}${userId?`&userId=${encodeURIComponent(userId)}`:""}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.found) {
+          // Server has a plan record — use it as source of truth
+          if (data.plan && data.plan !== plan) {
+            setPlan(data.plan);
+            localStorage.setItem("rankactions_plan", data.plan);
+          }
+          // Restore sites if server has more
+          if (data.sites?.length > 0 && data.sites.length >= sites.length) {
+            setSites(data.sites);
+            localStorage.setItem("rankactions_sites", JSON.stringify(data.sites));
+          }
+          // Mark plan as chosen so selection screen doesn't show
+          if (data.plan && data.plan !== "free") {
+            localStorage.setItem("rankactions_plan_chosen", "1");
+            setShowPlan(false);
+          }
+        } else if (!localStorage.getItem("rankactions_plan_chosen")) {
+          // No server record and no local choice — show plan selection
+          setShowPlan(true);
+        }
+      })
+      .catch(() => {
+        // Network error — fall back to localStorage behaviour
+        if (!localStorage.getItem("rankactions_plan_chosen")) setShowPlan(true);
+      });
+  }, [isSignedIn, user?.id]);
+
+  // ── Show plan selection on first sign-in (localStorage fallback) ──
   useEffect(() => {
     if (isSignedIn && !localStorage.getItem("rankactions_plan_chosen")) {
-      setShowPlan(true);
+      // Only show if the profile fetch hasn't already handled it
+      setTimeout(() => {
+        if (!localStorage.getItem("rankactions_plan_chosen")) setShowPlan(true);
+      }, 1500);
     }
   }, [isSignedIn]);
 
