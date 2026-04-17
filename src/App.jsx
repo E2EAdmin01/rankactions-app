@@ -752,33 +752,57 @@ export default function RankActions() {
       setIsConnected(true);
       localStorage.setItem("rankactions_userId", activeUid);
 
-      // Restore site entered before the Google redirect
-      const pendingSite = localStorage.getItem("rankactions_pending_site");
-      const currentSite = savedSite || "mywebsite.com";
+      if (uid) {
+        // Fresh OAuth return — fetch the user's actual GSC sites
+        fetch(`${WORKER_URL}/api/gsc-sites?userId=${encodeURIComponent(uid)}`)
+          .then(r => r.json())
+          .then(data => {
+            const gscSites = data.sites || [];
+            const pendingSite = localStorage.getItem("rankactions_pending_site") || "";
 
-      if (uid && pendingSite && pendingSite !== "mywebsite.com") {
-        // Fresh OAuth return — use the site they entered before redirect
-        setSelectedSite(pendingSite);
-        localStorage.setItem("rankactions_selectedSite", pendingSite);
-        setSites([pendingSite]);
-        localStorage.setItem("rankactions_sites", JSON.stringify([pendingSite]));
-        localStorage.removeItem("rankactions_pending_site");
-      } else if (savedSite && savedSite !== "mywebsite.com") {
-        setSelectedSite(savedSite);
-        if (savedSites) setSites(JSON.parse(savedSites));
-      } else if (!savedSite || savedSite === "mywebsite.com") {
-        // No saved site — try fetching from GSC to get their verified site
-        fetch(`${WORKER_URL}/api/search-console?userId=${encodeURIComponent(activeUid)}&siteUrl=sc-domain:placeholder&days=1`)
-          .then(r=>r.json())
-          .then(data=>{
-            if (data?.siteUrl && !data.error) {
-              const realSite = data.siteUrl.replace(/^https?:\/\//,"").replace(/\/$/,"");
-              setSelectedSite(realSite);
-              localStorage.setItem("rankactions_selectedSite", realSite);
-              setSites([realSite]);
-              localStorage.setItem("rankactions_sites", JSON.stringify([realSite]));
+            if (gscSites.length === 0) {
+              // No GSC sites found — fall back to what they typed
+              const fallback = pendingSite || savedSite || "mywebsite.com";
+              setSelectedSite(fallback);
+              localStorage.setItem("rankactions_selectedSite", fallback);
+              setSites([fallback]);
+              localStorage.setItem("rankactions_sites", JSON.stringify([fallback]));
+            } else if (gscSites.length === 1) {
+              // Only one site — use it automatically
+              const site = gscSites[0].siteUrl;
+              setSelectedSite(site);
+              localStorage.setItem("rankactions_selectedSite", site);
+              setSites([site]);
+              localStorage.setItem("rankactions_sites", JSON.stringify([site]));
+            } else {
+              // Multiple sites — try to match what they typed, else use all
+              const match = pendingSite
+                ? gscSites.find(s =>
+                    s.displayUrl.includes(pendingSite.replace(/^https?:\/\//,"").replace(/\/$/,"")) ||
+                    s.siteUrl.includes(pendingSite.replace(/^https?:\/\//,"").replace(/\/$/,""))
+                  )
+                : null;
+              const primary = match ? match.siteUrl : gscSites[0].siteUrl;
+              const allUrls = gscSites.map(s => s.siteUrl);
+              setSelectedSite(primary);
+              localStorage.setItem("rankactions_selectedSite", primary);
+              setSites(allUrls);
+              localStorage.setItem("rankactions_sites", JSON.stringify(allUrls));
             }
-          }).catch(()=>{});
+            localStorage.removeItem("rankactions_pending_site");
+          })
+          .catch(() => {
+            // Network error — use pending site as fallback
+            const fallback = localStorage.getItem("rankactions_pending_site") || savedSite || "mywebsite.com";
+            setSelectedSite(fallback);
+            localStorage.setItem("rankactions_selectedSite", fallback);
+            setSites([fallback]);
+            localStorage.setItem("rankactions_sites", JSON.stringify([fallback]));
+          });
+      } else {
+        // Returning user — restore from localStorage
+        if (savedSite && savedSite !== "mywebsite.com") setSelectedSite(savedSite);
+        if (savedSites) setSites(JSON.parse(savedSites));
       }
 
       window.history.replaceState({}, "", window.location.pathname);
@@ -1239,20 +1263,24 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         <div className="ob-step-label">Step {step} of 4</div>
         {step===1 && <>
           <div className="ob-h">Enter your website</div>
-          <div className="ob-sub">We'll analyse your site and show you exactly what to fix this week.</div>
-          <input className="ob-input" placeholder="e.g. mywebsite.com" value={urlInput}
+          <div className="ob-sub">Enter your domain below, then connect Google Search Console. If your Google account has multiple sites, we'll import them all automatically.</div>
+          <input className="ob-input" placeholder="e.g. e2e-integration.co.uk" value={urlInput}
             onChange={e=>setUrlInput(e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&urlInput.trim()&&setStep(2)}/>
           <button className="ob-btn" disabled={!urlInput.trim()} onClick={()=>{
             const clean = urlInput.trim().replace(/^https?:\/\//,"").replace(/\/$/,"");
             setSelectedSite(clean);
             localStorage.setItem("rankactions_selectedSite", clean);
-            localStorage.setItem("rankactions_pending_site", clean); // backup before redirect
+            localStorage.setItem("rankactions_pending_site", clean);
             const updated = [clean];
             setSites(updated);
             localStorage.setItem("rankactions_sites", JSON.stringify(updated));
             setStep(2);
           }}>Continue →</button>
+          <span className="ob-skip" style={{cursor:"pointer"}} onClick={()=>{
+            localStorage.setItem("rankactions_pending_site","");
+            setStep(2);
+          }}>Skip — I'll pick my site after connecting Google</span>
         </>}
         {step===2 && <>
           <div className="ob-h">Connect your data</div>
