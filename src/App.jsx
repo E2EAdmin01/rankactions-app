@@ -485,8 +485,30 @@ const CSS = `
 .reports-actions-list{display:flex;flex-direction:column;gap:.4rem;margin-top:.85rem;}
 .reports-action-item{display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:var(--text2);background:var(--s2);border-radius:6px;padding:.4rem .65rem;}
 .reports-priority-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
-@media(max-width:800px){.reports-charts-row{grid-template-columns:1fr;}.reports-donut-wrap{border-right:none;border-bottom:1px solid var(--border);}}`;
+@media(max-width:800px){.reports-charts-row{grid-template-columns:1fr;}.reports-donut-wrap{border-right:none;border-bottom:1px solid var(--border);}}
 
+/* ── GSC Site Picker ── */
+.site-picker-overlay{position:fixed;inset:0;background:rgba(7,8,15,.88);backdrop-filter:blur(6px);z-index:400;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
+.site-picker-modal{background:var(--s1);border:1px solid var(--border);border-radius:16px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;}
+.site-picker-head{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);}
+.site-picker-title{font-size:.95rem;font-weight:700;margin-bottom:.25rem;}
+.site-picker-sub{font-size:.8rem;color:var(--text2);}
+.site-picker-list{overflow-y:auto;flex:1;padding:.75rem;}
+.site-picker-item{display:flex;align-items:center;gap:.75rem;padding:.75rem .85rem;border-radius:8px;cursor:pointer;transition:background .1s;border:1px solid transparent;margin-bottom:.4rem;}
+.site-picker-item:hover{background:var(--s2);}
+.site-picker-item.selected{background:var(--bdim);border-color:rgba(77,123,255,.25);}
+.site-picker-checkbox{width:18px;height:18px;border-radius:4px;border:2px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;transition:all .15s;}
+.site-picker-item.selected .site-picker-checkbox{background:var(--blue);border-color:var(--blue);color:#fff;}
+.site-picker-url{font-size:.85rem;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.site-picker-type{font-size:.7rem;color:var(--text3);margin-top:.1rem;}
+.site-picker-foot{padding:1rem 1.5rem;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-wrap:wrap;}
+.site-picker-count{font-size:.8rem;color:var(--text2);}
+.site-picker-confirm{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:.65rem 1.25rem;font-family:var(--font);font-size:.875rem;font-weight:600;cursor:pointer;}
+.site-picker-confirm:disabled{opacity:.4;cursor:not-allowed;}
+.site-picker-confirm:hover:not(:disabled){opacity:.88;}
+.site-picker-search{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:.6rem .85rem;color:var(--text);font-family:var(--font);font-size:.85rem;outline:none;margin-bottom:.5rem;}
+.site-picker-search::placeholder{color:var(--text3);}
+.site-picker-search:focus{border-color:var(--blue);}`;
 // ─── Demo fallback data ───────────────────────────────────────
 const DEMO_KPI = [
   { label:"Organic Traffic", value:"2,847", delta:"↓ 8%",    pos:false, sub:"vs last week",  source:"demo" },
@@ -670,7 +692,8 @@ export default function RankActions() {
     return stored.count;
   });
   const [showUpgrade,  setShowUpgrade]  = useState(false);
-  const [planBilling,  setPlanBilling]  = useState("monthly"); // for plan selection screen
+  const [planBilling,  setPlanBilling]  = useState("monthly");
+  const [gscSitePicker, setGscSitePicker] = useState(null); // list of sites to pick from // for plan selection screen
 
   // ── Plan helpers ────────────────────────────────────────────
   const isAgency = plan === "agency";
@@ -753,47 +776,36 @@ export default function RankActions() {
       localStorage.setItem("rankactions_userId", activeUid);
 
       if (uid) {
-        // Fresh OAuth return — fetch the user's actual GSC sites
+        // Fresh OAuth return — fetch the user's GSC sites then let them pick
         fetch(`${WORKER_URL}/api/gsc-sites?userId=${encodeURIComponent(uid)}`)
           .then(r => r.json())
           .then(data => {
             const gscSites = data.sites || [];
             const pendingSite = localStorage.getItem("rankactions_pending_site") || "";
+            localStorage.removeItem("rankactions_pending_site");
 
             if (gscSites.length === 0) {
-              // No GSC sites found — fall back to what they typed
-              const fallback = pendingSite || savedSite || "mywebsite.com";
+              // No GSC sites — use what they typed
+              const fallback = pendingSite || "mywebsite.com";
               setSelectedSite(fallback);
               localStorage.setItem("rankactions_selectedSite", fallback);
               setSites([fallback]);
               localStorage.setItem("rankactions_sites", JSON.stringify([fallback]));
             } else if (gscSites.length === 1) {
-              // Only one site — use it automatically
+              // Only one site — use it automatically, no picker needed
               const site = gscSites[0].siteUrl;
               setSelectedSite(site);
               localStorage.setItem("rankactions_selectedSite", site);
               setSites([site]);
               localStorage.setItem("rankactions_sites", JSON.stringify([site]));
             } else {
-              // Multiple sites — try to match what they typed, else use all
-              const match = pendingSite
-                ? gscSites.find(s =>
-                    s.displayUrl.includes(pendingSite.replace(/^https?:\/\//,"").replace(/\/$/,"")) ||
-                    s.siteUrl.includes(pendingSite.replace(/^https?:\/\//,"").replace(/\/$/,""))
-                  )
-                : null;
-              const primary = match ? match.siteUrl : gscSites[0].siteUrl;
-              const allUrls = gscSites.map(s => s.siteUrl);
-              setSelectedSite(primary);
-              localStorage.setItem("rankactions_selectedSite", primary);
-              setSites(allUrls);
-              localStorage.setItem("rankactions_sites", JSON.stringify(allUrls));
+              // Multiple sites — show picker with pending site pre-selected
+              setGscSitePicker({ sites: gscSites, pending: pendingSite, userId: uid });
             }
-            localStorage.removeItem("rankactions_pending_site");
           })
           .catch(() => {
-            // Network error — use pending site as fallback
             const fallback = localStorage.getItem("rankactions_pending_site") || savedSite || "mywebsite.com";
+            localStorage.removeItem("rankactions_pending_site");
             setSelectedSite(fallback);
             localStorage.setItem("rankactions_selectedSite", fallback);
             setSites([fallback]);
@@ -3093,6 +3105,110 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
   };
 
   // ─────────────────────────────────────────────────────────────
+  // GSC SITE PICKER
+  // Shown when user's Google account has multiple GSC properties
+  // ─────────────────────────────────────────────────────────────
+  const GscSitePicker = () => {
+    const { sites: pickerSites, pending } = gscSitePicker;
+    const [search,   setSearch]   = useState("");
+    const [selected, setSelected] = useState(() => {
+      // Pre-select any site that matches what they typed
+      if (!pending) return new Set();
+      const match = pickerSites.find(s =>
+        s.displayUrl.includes(pending.replace(/^https?:\/\//,"").replace(/\/$/,"")) ||
+        s.siteUrl.toLowerCase().includes(pending.toLowerCase())
+      );
+      return match ? new Set([match.siteUrl]) : new Set();
+    });
+
+    const toggle = (siteUrl) => {
+      setSelected(prev => {
+        const next = new Set(prev);
+        next.has(siteUrl) ? next.delete(siteUrl) : next.add(siteUrl);
+        return next;
+      });
+    };
+
+    const confirm = () => {
+      const chosen = [...selected];
+      if (chosen.length === 0) return;
+      const primary = chosen[0];
+      setSelectedSite(primary);
+      localStorage.setItem("rankactions_selectedSite", primary);
+      setSites(chosen);
+      localStorage.setItem("rankactions_sites", JSON.stringify(chosen));
+      setGscSitePicker(null);
+    };
+
+    const filtered = pickerSites.filter(s =>
+      !search ||
+      s.displayUrl.toLowerCase().includes(search.toLowerCase()) ||
+      s.siteUrl.toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+      <div className="site-picker-overlay">
+        <div className="site-picker-modal">
+          <div className="site-picker-head">
+            <div className="site-picker-title">Choose your website{isPro ? "s" : ""}</div>
+            <div className="site-picker-sub">
+              {isPro
+                ? "Select all the sites you want to track. You can add or remove sites later."
+                : "Select one site to track. Upgrade to Pro to track unlimited sites."
+              } Your Google account has access to {pickerSites.length} sites.
+            </div>
+          </div>
+          <div className="site-picker-list">
+            <input
+              className="site-picker-search"
+              placeholder="Search sites…"
+              value={search}
+              onChange={e=>setSearch(e.target.value)}
+            />
+            {filtered.map(site => {
+              const isSel = selected.has(site.siteUrl);
+              const isDomain = site.siteUrl.startsWith("sc-domain:");
+              return (
+                <div key={site.siteUrl}
+                  className={`site-picker-item ${isSel?"selected":""}`}
+                  onClick={()=>{
+                    if (!isPro && !isSel && selected.size >= 1) return; // free: 1 site max
+                    toggle(site.siteUrl);
+                  }}>
+                  <div className="site-picker-checkbox">{isSel?"✓":""}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div className="site-picker-url">{site.displayUrl}</div>
+                    <div className="site-picker-type">
+                      {isDomain ? "Domain property" : "URL prefix property"}
+                      {site.permissionLevel === "siteOwner" ? " · Owner" : " · Verified user"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {!isPro && selected.size >= 1 && (
+              <div style={{fontSize:".75rem",color:"var(--amber)",padding:".5rem .85rem",background:"var(--adim)",borderRadius:7,marginTop:".25rem"}}>
+                🔒 Free plan: 1 site only. <span style={{color:"var(--green)",cursor:"pointer",fontWeight:600}} onClick={()=>setShowUpgrade(true)}>Upgrade to Pro</span> to add unlimited sites.
+              </div>
+            )}
+          </div>
+          <div className="site-picker-foot">
+            <div className="site-picker-count">
+              {selected.size} site{selected.size!==1?"s":""} selected
+            </div>
+            <button
+              className="site-picker-confirm"
+              disabled={selected.size === 0}
+              onClick={confirm}>
+              Confirm selection →
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ─────────────────────────────────────────────────────────────
   // ROOT
   // ─────────────────────────────────────────────────────────────
   return (
@@ -3110,9 +3226,10 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
           {screen==="admin"      && !isAdmin && <div className="content" style={{textAlign:"center",paddingTop:"4rem",color:"var(--text3)"}}>Access denied.</div>}
         </div>
       </div>
-      {modal        && <FixModal/>}
-      {croModal     && <CroModal/>}
-      {showUpgrade  && <UpgradeModal/>}
+      {modal            && <FixModal/>}
+      {croModal         && <CroModal/>}
+      {showUpgrade      && <UpgradeModal/>}
+      {gscSitePicker    && <GscSitePicker/>}
     </div></>
   );
 }
