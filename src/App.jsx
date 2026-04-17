@@ -1609,51 +1609,10 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
   };
 
   // ─────────────────────────────────────────────────────────────
-  // SCHEMA INSTRUCTIONS — proper component so useState is valid
+  // TECHNICAL FIX INSTRUCTIONS — unified component for all issue types
   // ─────────────────────────────────────────────────────────────
-  const SchemaInstructions = ({ data, copiedId, copyText }) => {
+  const TechnicalFixInstructions = ({ category, data, copiedId, copyText }) => {
     const [platform, setPlatform] = useState("wordpress");
-    const steps = {
-      wordpress:[
-        "Log in to your WordPress dashboard",
-        "Go to Plugins → Add New and search for 'Insert Headers and Footers'",
-        "Install and activate the free plugin by WPBeginner",
-        "Go to Settings → Insert Headers and Footers",
-        "Copy the code above and paste it into the 'Scripts in Header' box",
-        "Click Save — Google will pick it up within a few days",
-      ],
-      squarespace:[
-        "Log in to your Squarespace account",
-        "Go to Settings → Advanced → Code Injection",
-        "Copy the code above and paste it into the 'Header' box",
-        "Click Save — the schema is now live",
-        "For a specific page only: edit the page → click the gear icon → Advanced → Page Header Code Injection",
-      ],
-      wix:[
-        "Log in to your Wix account and open your site in the editor",
-        "Click Settings (⚙) in the left panel",
-        "Go to SEO → Structured Data Markup",
-        "Click + Add Markup and paste the code above",
-        "Click Apply — Wix adds it to the page automatically",
-      ],
-      shopify:[
-        "Log in to your Shopify admin",
-        "Go to Online Store → Themes",
-        "Next to your current theme, click Actions → Edit Code",
-        "In the left panel click 'theme.liquid'",
-        "Press Ctrl+F and search for </head>",
-        "Paste the code above on the line directly above </head>",
-        "Click Save — the schema is now live",
-      ],
-      other:[
-        "Open your website files in your editor or CMS",
-        "Find the page template or HTML file for this page",
-        "Look for the </head> closing tag near the top of the file",
-        "Paste the code above on the line directly above </head>",
-        "Save and publish — the schema is now live",
-        "Not sure? Send the code to your web developer and ask them to add it to the <head> section of this page",
-      ],
-    };
     const platforms = [
       {id:"wordpress",   label:"WordPress"},
       {id:"squarespace", label:"Squarespace"},
@@ -1661,20 +1620,71 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       {id:"shopify",     label:"Shopify"},
       {id:"other",       label:"Other / Not sure"},
     ];
+    const allSteps = {
+      schema:{
+        wordpress:["Log in to your WordPress dashboard","Go to Plugins → Add New and search for 'Insert Headers and Footers'","Install and activate the free plugin by WPBeginner","Go to Settings → Insert Headers and Footers","Copy the code above and paste it into the 'Scripts in Header' box","Click Save — Google will pick it up within a few days"],
+        squarespace:["Log in to your Squarespace account","Go to Settings → Advanced → Code Injection","Copy the code above and paste it into the 'Header' box","Click Save — the schema is now live","For a specific page: edit the page → gear icon (⚙) → Advanced → Page Header Code Injection"],
+        wix:["Log in to Wix and open your site editor","Click Settings (⚙) in the left panel → SEO → Structured Data Markup","Click + Add Markup and paste the code above","Click Apply — Wix adds it automatically"],
+        shopify:["Go to Online Store → Themes → Actions → Edit Code","Click 'theme.liquid' in the left panel","Press Ctrl+F and search for </head>","Paste the code above on the line directly above </head>","Click Save"],
+        other:["Find the HTML template file for this page","Locate the </head> tag near the top","Paste the code above on the line directly above </head>","Save and publish","Not sure? Send the code to your developer and ask them to add it to the <head> of this page"],
+      },
+      meta:{
+        wordpress:["Install the free Yoast SEO plugin if you don't have it (Plugins → Add New → search 'Yoast SEO')","Edit the page: Pages → find the page → Edit","Scroll below the editor to the Yoast SEO box and click 'Edit snippet'","Paste the new meta description into the Meta description field","Update the SEO title field for the title tag","Click Update to save"],
+        squarespace:["Log in and hover over the page in the Pages panel","Click the gear icon (⚙) next to the page name","Click the SEO tab","Paste the new description into 'SEO Description'","Update the 'SEO Title' for the title tag","Click Save"],
+        wix:["Open the editor and click the Pages icon in the left panel","Hover over the page → three dots (...) → SEO Settings","Paste the new description into 'Meta Description'","Update 'Page Title' for the title tag","Click Save and publish"],
+        shopify:["Go to Online Store → Pages → click the page to edit","Scroll down to 'Search engine listing preview' → click 'Edit website SEO'","Paste the new description into 'Meta description'","Update 'Page title' for the title tag","Click Save"],
+        other:["Find the page in your CMS and open the SEO or Page Settings section","Paste the new description into the Meta Description field","Update the page title / SEO title field","Save and publish","If editing HTML directly: find <meta name="description" content="..."> in the <head> and update the content value"],
+      },
+      broken_links:{
+        wordpress:["Install the free 'Broken Link Checker' plugin (Plugins → Add New) — it will list all broken links","To fix manually: edit the page shown above (Pages → Edit)","Find the linked text → click it → press the link icon","Replace the broken URL with the suggested replacement above","Click Update to save"],
+        squarespace:["Log in and navigate to the page shown in the issue","Click Edit Page","Find the linked text and click on it","In the link popup, replace the broken URL with the correct one from above","Click Apply, then Save"],
+        wix:["Open the editor and navigate to the page","Find the linked text or button and click it","Click the link icon in the toolbar","Replace the broken URL with the correct one from above","Click Done, then Publish"],
+        shopify:["Go to Online Store → Pages and edit the page shown","Find the linked text → click the link icon in the editor","Replace the broken URL with the correct one from above","Click Save","For broken nav links: go to Online Store → Navigation to fix those separately"],
+        other:["Find the page shown in the issue in your CMS","Edit the page and locate the linked text","Replace the broken URL with the correct URL from the suggestion above","Save and publish","To find all broken links across your site for free: ahrefs.com/broken-link-checker"],
+      },
+      pagespeed:{
+        wordpress:["Install 'WP Super Cache' (free) for caching — activate it, no setup needed","Install 'Smush' (free) to automatically compress images on your site","Install 'Autoptimize' and tick 'Optimise JavaScript' and 'Defer JavaScript'","Test your improvement at: pagespeed.web.dev — aim for 70+ on mobile"],
+        squarespace:["Compress images before uploading — use squoosh.app (free) and resize to max 2500px wide","Go to Settings → Advanced and remove any unused code injections","Disable any third-party blocks you're not actively using","Test at: pagespeed.web.dev — share results with Squarespace support if still slow"],
+        wix:["Replace any images over 500KB — click the image → Settings → Optimize for Web","Remove Wix apps you're not actively using (each one adds load time)","Check that lazy loading is enabled in your image settings","Test at: pagespeed.web.dev"],
+        shopify:["Install TinyIMG (free plan available) to compress all product and page images","Remove any unused apps from your Apps page — every active app adds load time","In your theme settings, disable autoplay videos or large animations if present","Test at: pagespeed.web.dev — Shopify stores typically score 40-60 on mobile"],
+        other:["Compress all images before uploading — use squoosh.app (free)","Enable browser caching — ask your hosting provider or add cache headers","Add 'defer' or 'async' to non-essential <script> tags in your HTML","Use Cloudflare's free CDN plan to speed up delivery globally","Test before and after at: pagespeed.web.dev"],
+      },
+    };
+    const steps = allSteps[category]?.[platform] || [];
     return <>
-      <div className="option-card">
-        <div className="option-num">Schema type: {data.schemaType}</div>
-        <div style={{background:"#0d1117",borderRadius:7,padding:".85rem",marginTop:".5rem",overflowX:"auto"}}>
-          <pre style={{fontFamily:"var(--mono)",fontSize:".72rem",color:"#a8d8d0",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{data.schemaCode}</pre>
+      {category==="schema" && data.schemaCode && (
+        <div className="option-card">
+          <div className="option-num">Schema type: {data.schemaType}</div>
+          <div style={{background:"#0d1117",borderRadius:7,padding:".85rem",marginTop:".5rem",overflowX:"auto"}}>
+            <pre style={{fontFamily:"var(--mono)",fontSize:".72rem",color:"#a8d8d0",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word",margin:0}}>{data.schemaCode}</pre>
+          </div>
+          <div className="option-actions" style={{marginTop:".65rem"}}>
+            <button className={`opt-btn ${copiedId==="schema"?"copied":""}`} onClick={()=>copyText(data.schemaCode,"schema")}>
+              {copiedId==="schema"?"✓ Copied":"📋 Copy code"}
+            </button>
+          </div>
         </div>
-        <div className="option-actions" style={{marginTop:".65rem"}}>
-          <button className={`opt-btn ${copiedId==="schema"?"copied":""}`} onClick={()=>copyText(data.schemaCode,"schema")}>
-            {copiedId==="schema"?"✓ Copied":"📋 Copy code"}
-          </button>
+      )}
+      {category==="broken_links" && <>
+        {data.suggestedReplacement && <div className="option-card"><div className="option-num">Replace broken link with</div><div className="option-text">{data.suggestedReplacement}</div><div className="option-actions" style={{marginTop:".5rem"}}><button className={`opt-btn ${copiedId==="link1"?"copied":""}`} onClick={()=>copyText(data.suggestedReplacement,"link1")}>{copiedId==="link1"?"✓ Copied":"📋 Copy"}</button></div></div>}
+        {data.alternativeReplacement && <div className="option-card"><div className="option-num">Alternative if above doesn't exist</div><div className="option-text">{data.alternativeReplacement}</div></div>}
+        {data.anchorText && <div className="option-card"><div className="option-num">Better anchor text</div><div className="option-text">{data.anchorText}</div></div>}
+      </>}
+      {category==="pagespeed" && data.quickestFix && (
+        <div className="option-card" style={{background:"var(--gdim)",border:"1px solid rgba(15,219,138,.2)"}}>
+          <div className="option-num" style={{color:"var(--green)"}}>Quickest fix</div>
+          <div className="option-text">{data.quickestFix}</div>
         </div>
-      </div>
+      )}
+      {category==="meta" && <>
+        {data.option1 && <div className="option-card"><div className="option-num">Title tag option 1</div><div className="option-text">{data.option1}</div><div className="option-actions" style={{marginTop:".5rem"}}><button className={`opt-btn ${copiedId==="o1"?"copied":""}`} onClick={()=>copyText(data.option1,"o1")}>{copiedId==="o1"?"✓ Copied":"📋 Copy"}</button></div></div>}
+        {data.option2 && <div className="option-card"><div className="option-num">Title tag option 2</div><div className="option-text">{data.option2}</div><div className="option-actions" style={{marginTop:".5rem"}}><button className={`opt-btn ${copiedId==="o2"?"copied":""}`} onClick={()=>copyText(data.option2,"o2")}>{copiedId==="o2"?"✓ Copied":"📋 Copy"}</button></div></div>}
+        {data.metaDesc && <div className="option-card"><div className="option-num">Meta description</div><div className="option-text">{data.metaDesc}</div><div className="option-actions" style={{marginTop:".5rem"}}><button className={`opt-btn ${copiedId==="md"?"copied":""}`} onClick={()=>copyText(data.metaDesc,"md")}>{copiedId==="md"?"✓ Copied":"📋 Copy"}</button></div></div>}
+      </>}
       <div className="option-card">
-        <div className="option-num" style={{marginBottom:".75rem"}}>How to add this to your site</div>
+        <div className="option-num" style={{marginBottom:".75rem"}}>
+          {category==="schema"?"How to add this to your site":category==="broken_links"?"How to fix this link in your CMS":category==="pagespeed"?"Step-by-step for your platform":"How to update this in your CMS"}
+        </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:".4rem",marginBottom:"1rem"}}>
           {platforms.map(({id,label})=>(
             <button key={id} onClick={()=>setPlatform(id)}
@@ -1683,16 +1693,16 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
             </button>
           ))}
         </div>
-        <ol style={{paddingLeft:"1.25rem",display:"flex",flexDirection:"column",gap:".6rem"}}>
-          {steps[platform].map((step,i)=>(
-            <li key={i} style={{fontSize:".85rem",color:"var(--text2)",lineHeight:1.6}}>{step}</li>
-          ))}
+        <ol style={{paddingLeft:"1.25rem",display:"flex",flexDirection:"column",gap:".65rem"}}>
+          {steps.map((step,i)=>(<li key={i} style={{fontSize:".85rem",color:"var(--text2)",lineHeight:1.65}}>{step}</li>))}
         </ol>
       </div>
+      {data.tip && <div className="tip-box">💡 {data.tip}</div>}
     </>;
   };
 
   // ─────────────────────────────────────────────────────────────
+  // FIX MODAL  // ─────────────────────────────────────────────────────────────
   // FIX MODAL
   // ─────────────────────────────────────────────────────────────
   const FixModal = () => {
@@ -1744,45 +1754,27 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           {modalLoading
             ? <div className="loading-center"><div className="spinner"/><span>Generating suggestions…</span></div>
             : modalData && <>
-                {/* ── Broken links ── */}
-                {isTechnical && category==="broken_links" && <>
-                  <OptCard label="Replace broken link with" value={modalData.suggestedReplacement} id="link1"/>
-                  <OptCard label="Alternative replacement" value={modalData.alternativeReplacement} id="link2"/>
-                  <OptCard label="Better anchor text to use" value={modalData.anchorText} id="anchor"/>
-                </>}
+                {/* Technical issues — all routed through unified component */}
+                {isTechnical && (
+                  <TechnicalFixInstructions
+                    category={category}
+                    data={modalData}
+                    copiedId={copiedId}
+                    copyText={copyText}
+                  />
+                )}
 
-                {/* ── Page speed ── */}
-                {isTechnical && category==="pagespeed" && <>
-                  <div className="option-card" style={{background:"var(--gdim)",border:"1px solid rgba(15,219,138,.2)"}}>
-                    <div className="option-num" style={{color:"var(--green)"}}>Quickest fix</div>
-                    <div className="option-text">{modalData.quickestFix}</div>
-                  </div>
-                  <StepCard step={1} text={modalData.step1}/>
-                  <StepCard step={2} text={modalData.step2}/>
-                  <StepCard step={3} text={modalData.step3}/>
-                  {modalData.expectedImprovement && (
-                    <div className="option-card">
-                      <div className="option-num">Expected improvement</div>
-                      <div className="option-text">{modalData.expectedImprovement}</div>
-                    </div>
-                  )}
-                </>}
-
-                {/* ── Schema ── */}
-                {isTechnical && category==="schema" && <SchemaInstructions data={modalData} copiedId={copiedId} copyText={copyText}/>}
-
-                {/* ── Meta / SEO copy (default — no fixCategory or meta category) ── */}
-                {(!isTechnical || category==="meta") && <>
+                {/* SEO keyword fixes — title tag / meta copy */}
+                {!isTechnical && <>
                   {[
-                    {key:"option1", label:"Option 1", text:modalData.option1},
-                    {key:"option2", label:"Option 2", text:modalData.option2},
+                    {key:"option1", label:"Option 1",        text:modalData.option1},
+                    {key:"option2", label:"Option 2",        text:modalData.option2},
                     ...(modalData.metaDesc?[{key:"meta",label:"Meta Description",text:modalData.metaDesc}]:[])
                   ].map(({key,label,text})=>(
                     <OptCard key={key} label={label} value={text} id={key}/>
                   ))}
+                  {modalData.tip && <div className="tip-box">💡 {modalData.tip}</div>}
                 </>}
-
-                {modalData.tip && <div className="tip-box">💡 {modalData.tip}</div>}
               </>
           }
         </div>
