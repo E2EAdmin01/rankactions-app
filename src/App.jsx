@@ -751,8 +751,36 @@ export default function RankActions() {
       setUserId(activeUid);
       setIsConnected(true);
       localStorage.setItem("rankactions_userId", activeUid);
-      if (savedSite)  setSelectedSite(savedSite);
-      if (savedSites) setSites(JSON.parse(savedSites));
+
+      // Restore site entered before the Google redirect
+      const pendingSite = localStorage.getItem("rankactions_pending_site");
+      const currentSite = savedSite || "mywebsite.com";
+
+      if (uid && pendingSite && pendingSite !== "mywebsite.com") {
+        // Fresh OAuth return — use the site they entered before redirect
+        setSelectedSite(pendingSite);
+        localStorage.setItem("rankactions_selectedSite", pendingSite);
+        setSites([pendingSite]);
+        localStorage.setItem("rankactions_sites", JSON.stringify([pendingSite]));
+        localStorage.removeItem("rankactions_pending_site");
+      } else if (savedSite && savedSite !== "mywebsite.com") {
+        setSelectedSite(savedSite);
+        if (savedSites) setSites(JSON.parse(savedSites));
+      } else if (!savedSite || savedSite === "mywebsite.com") {
+        // No saved site — try fetching from GSC to get their verified site
+        fetch(`${WORKER_URL}/api/search-console?userId=${encodeURIComponent(activeUid)}&siteUrl=sc-domain:placeholder&days=1`)
+          .then(r=>r.json())
+          .then(data=>{
+            if (data?.siteUrl && !data.error) {
+              const realSite = data.siteUrl.replace(/^https?:\/\//,"").replace(/\/$/,"");
+              setSelectedSite(realSite);
+              localStorage.setItem("rankactions_selectedSite", realSite);
+              setSites([realSite]);
+              localStorage.setItem("rankactions_sites", JSON.stringify([realSite]));
+            }
+          }).catch(()=>{});
+      }
+
       window.history.replaceState({}, "", window.location.pathname);
       setScreen("dashboard");
     }
@@ -1216,10 +1244,11 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
             onChange={e=>setUrlInput(e.target.value)}
             onKeyDown={e=>e.key==="Enter"&&urlInput.trim()&&setStep(2)}/>
           <button className="ob-btn" disabled={!urlInput.trim()} onClick={()=>{
-            const clean = urlInput.trim().replace(/^https?:\/\//,"");
+            const clean = urlInput.trim().replace(/^https?:\/\//,"").replace(/\/$/,"");
             setSelectedSite(clean);
             localStorage.setItem("rankactions_selectedSite", clean);
-            const updated = [...new Set([clean])];
+            localStorage.setItem("rankactions_pending_site", clean); // backup before redirect
+            const updated = [clean];
             setSites(updated);
             localStorage.setItem("rankactions_sites", JSON.stringify(updated));
             setStep(2);
@@ -1358,6 +1387,29 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         {isConnected
           ? <button className="disconnect-btn" onClick={disconnect}>Disconnect GSC</button>
           : <button className="connect-btn" onClick={()=>window.location.href=`${WORKER_URL}/auth/google`}>🔗 Connect Google</button>}
+        {/* Admin-only plan switcher for testing */}
+        {isAdmin && (
+          <select
+            value={plan}
+            onChange={e=>{
+              const p = e.target.value;
+              setPlan(p);
+              localStorage.setItem("rankactions_plan", p);
+              localStorage.setItem("rankactions_plan_chosen", "1");
+              // Sync to Worker so it persists
+              fetch(`${WORKER_URL}/api/user/sync`,{
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body:JSON.stringify({clerkId:user?.id, userId, plan:p, sites, aiFixCount})
+              }).catch(()=>{});
+            }}
+            style={{background:"var(--s2)",border:"1px solid var(--border)",borderRadius:6,padding:".3rem .6rem",color:"var(--text2)",fontFamily:"var(--font)",fontSize:".75rem",cursor:"pointer"}}
+            title="Admin: switch plan for testing">
+            <option value="free">Free</option>
+            <option value="pro">Pro</option>
+            <option value="agency">Agency</option>
+          </select>
+        )}
         <UserButton afterSignOutUrl="/" appearance={{variables:{colorPrimary:"#4d7bff"}}}/>
       </div>
     </div>
