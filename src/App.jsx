@@ -519,6 +519,7 @@ export default function RankActions() {
     return stored.count;
   });
   const [showUpgrade,  setShowUpgrade]  = useState(false);
+  const [planBilling,  setPlanBilling]  = useState("monthly"); // for plan selection screen
 
   // ── Plan helpers ────────────────────────────────────────────
   const isPro = plan === "pro";
@@ -798,8 +799,7 @@ Return ONLY valid JSON — no markdown, no explanation:
   // PLAN SELECTION — show on first sign-in
   // ─────────────────────────────────────────────────────────────
   if (showPlan) {
-    const [billing, setBilling] = useState("monthly");
-    const isAnnual = billing === "annual";
+    const isAnnual = planBilling === "annual";
     return (
     <><style>{CSS}</style>
     <div className="gos">
@@ -810,7 +810,7 @@ Return ONLY valid JSON — no markdown, no explanation:
         {/* Billing toggle */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:".75rem",marginBottom:"1.75rem"}}>
           <span style={{fontSize:".875rem",fontWeight:isAnnual?400:700,color:isAnnual?"var(--text3)":"var(--text)"}}>Monthly</span>
-          <div onClick={()=>setBilling(b=>b==="monthly"?"annual":"monthly")}
+          <div onClick={()=>setPlanBilling(b=>b==="monthly"?"annual":"monthly")}
             style={{width:44,height:24,background:"var(--green)",borderRadius:999,position:"relative",cursor:"pointer",flexShrink:0}}>
             <div style={{position:"absolute",top:3,left:3,width:18,height:18,background:"#fff",borderRadius:"50%",transition:"transform .2s",transform:isAnnual?"translateX(20px)":"translateX(0)"}}/>
           </div>
@@ -865,7 +865,7 @@ Return ONLY valid JSON — no markdown, no explanation:
           setPlan(selPlan==="agency"?"pro":selPlan); // treat agency as pro until Stripe
           localStorage.setItem("rankactions_plan", selPlan==="agency"?"pro":selPlan);
           localStorage.setItem("rankactions_plan_chosen", "1");
-          localStorage.setItem("rankactions_billing", billing);
+          localStorage.setItem("rankactions_billing", planBilling);
           setShowPlan(false);
         }}>
           {selPlan==="free" ? "Continue with Free →" : `Start with ${selPlan==="agency"?"Agency":"Pro"} ${isAnnual?"(Annual)":"(Monthly)"} →`}
