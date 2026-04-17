@@ -1303,7 +1303,14 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         {dataLoading  ? <span className="topbar-badge demo">⏳ Fetching…</span>
          : isConnected && siteData ? <span className="topbar-badge">✓ Live data</span>
          : <span className="topbar-badge demo">⚠ Demo data</span>}
-        <span className={`plan-pill ${plan==="pro"?"pro":plan==="agency"?"agency":""}`}>
+        <span
+          className={`plan-pill ${plan==="pro"?"pro":plan==="agency"?"agency":""}`}
+          style={{cursor:"pointer"}}
+          title="Click to change plan"
+          onClick={()=>{
+            localStorage.removeItem("rankactions_plan_chosen");
+            setShowPlan(true);
+          }}>
           {plan==="agency"?"Agency":plan==="pro"?"Pro":"Free"}
         </span>
         {isConnected
