@@ -756,6 +756,8 @@ export default function RankActions() {
   const [linkProspects,  setLinkProspects]  = useState(() => {
     try { const site = localStorage.getItem("rankactions_selectedSite") || "mywebsite.com"; return JSON.parse(localStorage.getItem(`ra_prospects_${site}`) || "[]"); } catch { return []; }
   });
+  const [availableGscSites, setAvailableGscSites] = useState([]);
+  const [gscSitesLoading,   setGscSitesLoading]   = useState(false);
   const [aiFixCount,   setAiFixCount]   = useState(() => {
     const stored = JSON.parse(localStorage.getItem("rankactions_ai_fix_usage") || '{"count":0,"month":""}');
     const thisMonth = new Date().toISOString().slice(0,7);
@@ -1615,8 +1617,6 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
   // ─────────────────────────────────────────────────────────────
   // Add site helper — fetches available GSC sites and shows them inline
   // ─────────────────────────────────────────────────────────────
-  const [availableGscSites, setAvailableGscSites] = useState([]);
-  const [gscSitesLoading,   setGscSitesLoading]   = useState(false);
 
   const addSite = async () => {
     // Gate: free users can only have 1 site
