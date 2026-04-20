@@ -7,7 +7,7 @@ import {
 // ─────────────────────────────────────────────────────────────
 // ⚙️  CONFIG — paste your Worker URL here after deploying it
 // ─────────────────────────────────────────────────────────────
-const WORKER_URL = import.meta.env.VITE_WORKER_URL || "https://growthos-api.growthos.workers.dev";
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || "https://growthos-api.growthos.workers.dev"; // update after Worker rename
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -487,6 +487,64 @@ const CSS = `
 .reports-priority-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
 @media(max-width:800px){.reports-charts-row{grid-template-columns:1fr;}.reports-donut-wrap{border-right:none;border-bottom:1px solid var(--border);}}
 
+/* ── Link Building ── */
+.links-wrap{padding:2rem;display:flex;flex-direction:column;gap:2rem;}
+.links-section{background:var(--s1);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.links-section-head{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;}
+.links-section-title{font-size:.95rem;font-weight:700;}
+.links-section-sub{font-size:.78rem;color:var(--text2);margin-top:.15rem;}
+.links-generate-btn{background:var(--green);color:#000;border:none;border-radius:8px;padding:.5rem 1.1rem;font-family:var(--font);font-size:.82rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:.4rem;transition:opacity .15s;}
+.links-generate-btn:hover{opacity:.88;}
+.links-generate-btn:disabled{opacity:.5;cursor:not-allowed;}
+.links-opp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1px;background:var(--border);}
+.links-opp-card{background:var(--s1);padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:.65rem;}
+.links-opp-type{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.2rem .55rem;border-radius:4px;display:inline-block;width:fit-content;}
+.links-opp-type.easy{background:var(--gdim);color:var(--green);}
+.links-opp-type.medium{background:var(--adim);color:var(--amber);}
+.links-opp-type.hard{background:var(--rdim);color:var(--red);}
+.links-opp-title{font-size:.9rem;font-weight:600;}
+.links-opp-desc{font-size:.8rem;color:var(--text2);line-height:1.6;}
+.links-opp-meta{display:flex;gap:.5rem;flex-wrap:wrap;}
+.links-opp-tag{font-size:.68rem;background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:.15rem .5rem;color:var(--text3);}
+.links-opp-actions{display:flex;gap:.5rem;margin-top:.25rem;}
+.links-opp-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:.35rem .75rem;font-family:var(--font);font-size:.75rem;font-weight:600;color:var(--text2);cursor:pointer;transition:all .15s;}
+.links-opp-btn:hover{border-color:var(--blue);color:var(--blue);}
+.links-opp-btn.primary{background:var(--bdim);border-color:var(--blue);color:var(--blue);}
+.links-template-tabs{display:flex;gap:0;border-bottom:1px solid var(--border);overflow-x:auto;}
+.links-template-tab{padding:.75rem 1.25rem;font-size:.82rem;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .15s;}
+.links-template-tab.active{color:var(--blue);border-bottom-color:var(--blue);font-weight:700;}
+.links-template-body{padding:1.5rem;display:flex;flex-direction:column;gap:1rem;}
+.links-template-field{display:flex;flex-direction:column;gap:.4rem;}
+.links-template-label{font-size:.75rem;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;}
+.links-template-input{background:var(--s2);border:1px solid var(--border);border-radius:7px;padding:.6rem .85rem;color:var(--text);font-family:var(--font);font-size:.85rem;outline:none;}
+.links-template-input:focus{border-color:var(--blue);}
+.links-template-output{background:var(--s2);border:1px solid var(--border);border-radius:7px;padding:1rem;font-size:.85rem;color:var(--text);line-height:1.75;white-space:pre-wrap;min-height:180px;}
+.links-tracker-cols{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--border);min-height:300px;}
+.links-tracker-col{background:var(--s1);display:flex;flex-direction:column;}
+.links-tracker-col-head{padding:.75rem 1rem;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.links-tracker-col-count{background:var(--s2);border-radius:999px;padding:.1rem .45rem;font-size:.65rem;}
+.links-tracker-cards{padding:.65rem;display:flex;flex-direction:column;gap:.5rem;flex:1;}
+.links-prospect-card{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:.75rem .85rem;cursor:pointer;transition:border-color .15s;}
+.links-prospect-card:hover{border-color:var(--blue);}
+.links-prospect-domain{font-size:.82rem;font-weight:600;color:var(--text);}
+.links-prospect-type{font-size:.72rem;color:var(--text3);margin-top:.15rem;}
+.links-prospect-date{font-size:.68rem;color:var(--text3);margin-top:.35rem;}
+.links-add-btn{background:none;border:1px dashed var(--border);border-radius:8px;padding:.65rem;width:100%;font-family:var(--font);font-size:.78rem;color:var(--text3);cursor:pointer;transition:all .15s;margin-top:.25rem;}
+.links-add-btn:hover{border-color:var(--blue);color:var(--blue);}
+.links-add-form{background:var(--s2);border:1px solid var(--blue);border-radius:8px;padding:.75rem;}
+.links-add-input{background:var(--s1);border:1px solid var(--border);border-radius:6px;padding:.45rem .65rem;color:var(--text);font-family:var(--font);font-size:.8rem;width:100%;outline:none;margin-bottom:.4rem;}
+.links-add-input:focus{border-color:var(--blue);}
+.links-add-row{display:flex;gap:.4rem;}
+.links-add-save{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:.4rem .75rem;font-family:var(--font);font-size:.75rem;font-weight:600;cursor:pointer;}
+.links-add-cancel{background:none;border:1px solid var(--border);border-radius:6px;padding:.4rem .75rem;font-family:var(--font);font-size:.75rem;color:var(--text2);cursor:pointer;}
+.links-dashboard-card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:1.25rem 1.5rem;}
+.links-dashboard-row{display:flex;align-items:center;gap:1rem;padding:.6rem 0;border-bottom:1px solid var(--border);}
+.links-dashboard-row:last-child{border-bottom:none;}
+.links-dashboard-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.links-dashboard-text{flex:1;font-size:.82rem;color:var(--text2);}
+.links-dashboard-badge{font-size:.68rem;font-weight:700;text-transform:uppercase;padding:.15rem .45rem;border-radius:4px;}
+@media(max-width:900px){.links-tracker-cols{grid-template-columns:1fr 1fr;}.links-opp-grid{grid-template-columns:1fr;}}
+
 /* ── GSC Site Picker ── */
 .site-picker-overlay{position:fixed;inset:0;background:rgba(7,8,15,.88);backdrop-filter:blur(6px);z-index:400;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
 .site-picker-modal{background:var(--s1);border:1px solid var(--border);border-radius:16px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;}
@@ -497,7 +555,7 @@ const CSS = `
 .site-picker-item{display:flex;align-items:center;gap:.75rem;padding:.75rem .85rem;border-radius:8px;cursor:pointer;transition:background .1s;border:1px solid transparent;margin-bottom:.4rem;}
 .site-picker-item:hover{background:var(--s2);}
 .site-picker-item.selected{background:var(--bdim);border-color:rgba(77,123,255,.25);}
-.site-picker-checkbox{width:18px;height:18px;border-radius:4px;border:2px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;transition:all .15s;}
+.site-picker-checkbox{width:18px;height:18px;border-radius:4px;border:2px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;transition:all .15s;}
 .site-picker-item.selected .site-picker-checkbox{background:var(--blue);border-color:var(--blue);color:#fff;}
 .site-picker-url{font-size:.85rem;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .site-picker-type{font-size:.7rem;color:var(--text3);margin-top:.1rem;}
@@ -509,7 +567,6 @@ const CSS = `
 .site-picker-search{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:.6rem .85rem;color:var(--text);font-family:var(--font);font-size:.85rem;outline:none;margin-bottom:.5rem;}
 .site-picker-search::placeholder{color:var(--text3);}
 .site-picker-search:focus{border-color:var(--blue);}`;
-// ─── Demo fallback data ───────────────────────────────────────
 const DEMO_KPI = [
   { label:"Organic Traffic", value:"2,847", delta:"↓ 8%",    pos:false, sub:"vs last week",  source:"demo" },
   { label:"Impressions",     value:"74,200",delta:"↓ 5%",    pos:false, sub:"vs last week",  source:"demo" },
@@ -685,6 +742,18 @@ export default function RankActions() {
   const [croModal,   setCroModal]   = useState(null);
   const [croData,    setCroData]    = useState(null);
   const [croLoading, setCroLoading] = useState(false);
+
+  // ── Link building state ────────────────────────────────────
+  const [linkOpps,       setLinkOpps]       = useState([]);
+  const [linkOppsLoading,setLinkOppsLoading]= useState(false);
+  const [linkTemplate,   setLinkTemplate]   = useState("guest_post");
+  const [linkTemplateTarget, setLinkTemplateTarget] = useState("");
+  const [linkTemplateContext, setLinkTemplateContext] = useState("");
+  const [linkTemplateOutput,  setLinkTemplateOutput]  = useState("");
+  const [linkTemplateLoading, setLinkTemplateLoading] = useState(false);
+  const [linkProspects,  setLinkProspects]  = useState(() => {
+    try { return JSON.parse(localStorage.getItem("rankactions_prospects") || "[]"); } catch { return []; }
+  });
   const [aiFixCount,   setAiFixCount]   = useState(() => {
     const stored = JSON.parse(localStorage.getItem("rankactions_ai_fix_usage") || '{"count":0,"month":""}');
     const thisMonth = new Date().toISOString().slice(0,7);
@@ -1555,13 +1624,14 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           {id:"dashboard",  icon:"⬡", label:"Dashboard"},
           {id:"siteDetail", icon:"◎", label:"Site Detail"},
           {id:"content",    icon:"✍", label:"Content"},
+          {id:"links",      icon:"🔗", label:"Link Building"},
           {id:"reports",    icon:"📄", label:"Reports"},
           {id:"settings",   icon:"⚙", label:"Settings"},
           ...(isAdmin ? [{id:"admin", icon:"🔐", label:"Admin"}] : []),
         ].map(n=>(
           <div key={n.id} className={`nav-item ${screen===n.id?"active":""}`}
             onClick={()=>{
-              if(["dashboard","siteDetail","content","admin","reports"].includes(n.id)) setScreen(n.id);
+              if(["dashboard","siteDetail","content","admin","reports","links"].includes(n.id)) setScreen(n.id);
             }}>
             <span style={{fontSize:"0.9rem"}}>{n.icon}</span>
             {n.label}
@@ -1696,6 +1766,52 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           <div className="ai-cta-row">
             <button className="ai-cta-btn" onClick={()=>setScreen("siteDetail")}>See what to fix →</button>
           </div>
+        </div>
+
+        {/* ── Link building summary ── */}
+        <div className="section-head" style={{marginTop:"1rem",marginBottom:"1rem"}}>
+          <div className="section-title">Link Building</div>
+          <div className="section-sub">
+            {linkProspects.filter(p=>p.status==="secured").length} links secured · <span style={{color:"var(--blue)",cursor:"pointer"}} onClick={()=>setScreen("links")}>View full tracker →</span>
+          </div>
+        </div>
+        <div className="links-dashboard-card" style={{marginBottom:"1.5rem"}}>
+          {linkProspects.length === 0 ? (
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"1rem",padding:".25rem 0"}}>
+              <div>
+                <div style={{fontSize:".875rem",fontWeight:600,marginBottom:".25rem"}}>No link building activity yet</div>
+                <div style={{fontSize:".8rem",color:"var(--text2)"}}>Links from other websites are one of the strongest ranking signals. Start building them today.</div>
+              </div>
+              <button className="links-generate-btn" onClick={()=>setScreen("links")}>Start building links →</button>
+            </div>
+          ) : (
+            <>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:".5rem",marginBottom:"1rem"}}>
+                {[
+                  {label:"Identified",id:"identified",color:"var(--blue)"},
+                  {label:"Contacted", id:"contacted", color:"var(--amber)"},
+                  {label:"Replied",   id:"replied",   color:"var(--green)"},
+                  {label:"Secured",   id:"secured",   color:"#a855f7"},
+                  {label:"Declined",  id:"declined",  color:"var(--red)"},
+                ].map(col=>(
+                  <div key={col.id} style={{background:"var(--s2)",borderRadius:8,padding:".6rem",textAlign:"center"}}>
+                    <div style={{fontSize:"1.1rem",fontWeight:700,color:col.color}}>{linkProspects.filter(p=>p.status===col.id).length}</div>
+                    <div style={{fontSize:".65rem",color:"var(--text3)",marginTop:".1rem"}}>{col.label}</div>
+                  </div>
+                ))}
+              </div>
+              {linkProspects.slice(0,3).map(p=>(
+                <div key={p.id} className="links-dashboard-row">
+                  <div className="links-dashboard-dot" style={{background:p.status==="secured"?"#a855f7":p.status==="replied"?"var(--green)":p.status==="contacted"?"var(--amber)":p.status==="declined"?"var(--red)":"var(--blue)"}}/>
+                  <div className="links-dashboard-text">{p.domain}</div>
+                  <span style={{fontSize:".68rem",color:"var(--text3)"}}>{p.status}</span>
+                </div>
+              ))}
+              <button className="links-opp-btn" style={{marginTop:".75rem",width:"100%",textAlign:"center"}} onClick={()=>setScreen("links")}>
+                View full tracker →
+              </button>
+            </>
+          )}
         </div>
 
         <div className="section-head">
@@ -3393,6 +3509,342 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
   };
 
   // ─────────────────────────────────────────────────────────────
+  // LINK BUILDING — generate opportunities and outreach emails
+  // ─────────────────────────────────────────────────────────────
+  const generateLinkOpps = async () => {
+    setLinkOppsLoading(true);
+    const topKws = siteData?.keywords?.slice(0,5).map(k=>k.keyword).join(", ") || "your main keywords";
+    try {
+      const txt = await callClaude(
+        `You are an expert link building strategist. Generate 6 specific link building opportunities for this website.
+
+Site: ${selectedSite}
+Top keywords: ${topKws}
+Industry context: infer from the domain and keywords above
+
+For each opportunity be SPECIFIC — name real types of sites, real directories, real approaches.
+Return ONLY valid JSON array:
+[
+  {
+    "title": "specific opportunity title",
+    "type": "Guest Post | Directory | Resource Page | Broken Link | Testimonial | Partnership | Local Citation",
+    "difficulty": "easy | medium | hard",
+    "description": "2-3 sentences explaining exactly what to do and why it will work for this site",
+    "example": "specific example of a site or place to target",
+    "value": "High | Medium | Low",
+    "timeToResult": "e.g. 2-4 weeks"
+  }
+]`,
+        "Expert link building strategist. Return valid JSON array only. Be specific to the site and industry — never generic."
+      );
+      setLinkOpps(JSON.parse(txt.replace(/```json|```/g,"").trim()));
+    } catch {
+      setLinkOpps([
+        { title:"Industry directory listings", type:"Directory", difficulty:"easy", description:`Submit ${selectedSite} to relevant industry directories. These provide consistent domain authority and referral traffic with minimal effort.`, example:"industry-specific directories, local business directories", value:"Medium", timeToResult:"1-2 weeks" },
+        { title:"Guest posts on industry blogs", type:"Guest Post", difficulty:"medium", description:`Write expert articles for blogs in your niche. Pitch a unique angle based on your expertise and include a natural link back to ${selectedSite}.`, example:"Niche blogs with 'write for us' pages", value:"High", timeToResult:"4-8 weeks" },
+        { title:"Resource page link building", type:"Resource Page", difficulty:"medium", description:`Find pages that list helpful resources in your industry and pitch ${selectedSite} as an addition. These are high-quality editorial links.`, example:'Search Google: "your keyword" + "useful resources"', value:"High", timeToResult:"2-4 weeks" },
+        { title:"Broken link replacement", type:"Broken Link", difficulty:"medium", description:`Find broken links on relevant sites and offer your content as a replacement. Use a free tool like Check My Links to spot opportunities.`, example:"Competitor pages, industry resource pages", value:"High", timeToResult:"1-3 weeks" },
+        { title:"Supplier/partner link exchange", type:"Partnership", difficulty:"easy", description:`Ask suppliers, partners and clients to add ${selectedSite} to their website. These are warm relationships and often convert quickly.`, example:"Your existing business contacts", value:"Medium", timeToResult:"1-2 weeks" },
+        { title:"Local citation building", type:"Local Citation", difficulty:"easy", description:`Add ${selectedSite} to local business directories and citation sites. Consistent NAP (Name, Address, Phone) data across citations boosts local SEO.`, example:"Google Business Profile, Yelp, Yell.com, Thomson Local", value:"Medium", timeToResult:"1-2 weeks" },
+      ]);
+    }
+    setLinkOppsLoading(false);
+  };
+
+  const generateOutreachEmail = async () => {
+    if (!linkTemplateTarget.trim()) return;
+    setLinkTemplateLoading(true);
+    const templates = {
+      guest_post: `Write a guest post pitch email from the owner of ${selectedSite} to ${linkTemplateTarget}. Context: ${linkTemplateContext||"general industry expertise"}. The email should be concise (under 150 words), personal, specific about their site, and end with a clear ask. No subject line needed — just the email body.`,
+      resource_page: `Write a resource page outreach email from the owner of ${selectedSite} to ${linkTemplateTarget} asking them to add our site to their resource page. Context: ${linkTemplateContext||"we have helpful content"}. Keep it under 100 words, friendly and specific. Just the email body.`,
+      broken_link: `Write a broken link outreach email from the owner of ${selectedSite} to ${linkTemplateTarget}. We found a broken link on their site and are offering our content as a replacement. Context: ${linkTemplateContext||"similar content topic"}. Under 100 words, helpful tone, not pushy. Just the email body.`,
+      testimonial: `Write a testimonial offer email from the owner of ${selectedSite} to ${linkTemplateTarget}. We use their product/service and want to offer a testimonial in exchange for a link back to our site. Context: ${linkTemplateContext||"happy customer"}. Under 80 words, genuine and warm. Just the email body.`,
+      partnership: `Write a partnership link exchange email from the owner of ${selectedSite} to ${linkTemplateTarget}. We want to explore a mutually beneficial link exchange or co-marketing opportunity. Context: ${linkTemplateContext||"complementary businesses"}. Under 120 words, professional. Just the email body.`,
+      directory: `Write a brief follow-up email from the owner of ${selectedSite} to ${linkTemplateTarget} after submitting to their directory, asking to confirm listing and check any requirements. Context: ${linkTemplateContext||"directory submission"}. Under 60 words, polite and professional. Just the email body.`,
+    };
+    try {
+      const txt = await callClaude(
+        templates[linkTemplate],
+        "Expert outreach copywriter. Write natural, human-sounding emails. Never use buzzwords like 'synergy' or 'leverage'. Be specific and concise."
+      );
+      setLinkTemplateOutput(txt.trim());
+    } catch {
+      setLinkTemplateOutput("Could not generate email — please try again.");
+    }
+    setLinkTemplateLoading(false);
+  };
+
+  const saveProspect = (domain, type, status="identified") => {
+    const prospect = { id: Date.now(), domain, type, status, date: new Date().toLocaleDateString("en-GB"), notes:"" };
+    const updated = [prospect, ...linkProspects];
+    setLinkProspects(updated);
+    localStorage.setItem("rankactions_prospects", JSON.stringify(updated));
+  };
+
+  const moveProspect = (id, newStatus) => {
+    const updated = linkProspects.map(p => p.id===id ? {...p, status:newStatus} : p);
+    setLinkProspects(updated);
+    localStorage.setItem("rankactions_prospects", JSON.stringify(updated));
+  };
+
+  const deleteProspect = (id) => {
+    const updated = linkProspects.filter(p => p.id!==id);
+    setLinkProspects(updated);
+    localStorage.setItem("rankactions_prospects", JSON.stringify(updated));
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // LINK BUILDING SCREEN
+  // ─────────────────────────────────────────────────────────────
+  const LinkBuildingScreen = () => {
+    const [addingTo,  setAddingTo]  = useState(null);
+    const [newDomain, setNewDomain] = useState("");
+    const [newType,   setNewType]   = useState("Guest Post");
+    const [copiedEmail, setCopiedEmail] = useState(false);
+
+    const cols = [
+      { id:"identified", label:"Identified",   color:"var(--blue)"  },
+      { id:"contacted",  label:"Contacted",    color:"var(--amber)" },
+      { id:"replied",    label:"Replied",      color:"var(--green)" },
+      { id:"secured",    label:"Link Secured", color:"#a855f7"      },
+      { id:"declined",   label:"Not Interested",color:"var(--red)"  },
+    ];
+
+    const templateTypes = [
+      { id:"guest_post",   label:"Guest Post"      },
+      { id:"resource_page",label:"Resource Page"   },
+      { id:"broken_link",  label:"Broken Link"     },
+      { id:"testimonial",  label:"Testimonial"     },
+      { id:"partnership",  label:"Partnership"     },
+      { id:"directory",    label:"Directory"       },
+    ];
+
+    const diffColor = d => d==="easy"?"easy":d==="medium"?"medium":"hard";
+    const valColor  = v => v==="High"?"var(--green)":v==="Medium"?"var(--amber)":"var(--text3)";
+
+    return (
+      <div className="links-wrap">
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"1rem"}}>
+          <div>
+            <div style={{fontSize:"1.1rem",fontWeight:700,letterSpacing:"-.03em"}}>Link Building</div>
+            <div style={{fontSize:".82rem",color:"var(--text2)",marginTop:".2rem"}}>
+              {selectedSite} · {linkProspects.filter(p=>p.status==="secured").length} links secured · {linkProspects.length} prospects tracked
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section 1: Opportunities ── */}
+        <div className="links-section">
+          <div className="links-section-head">
+            <div>
+              <div className="links-section-title">Link Opportunities</div>
+              <div className="links-section-sub">AI-generated opportunities specific to {selectedSite}</div>
+            </div>
+            <button className="links-generate-btn" disabled={linkOppsLoading} onClick={generateLinkOpps}>
+              {linkOppsLoading ? "⏳ Generating…" : "✨ Generate opportunities"}
+            </button>
+          </div>
+          {linkOpps.length === 0 && !linkOppsLoading && (
+            <div style={{padding:"3rem",textAlign:"center",color:"var(--text3)"}}>
+              <div style={{fontSize:"2rem",marginBottom:"1rem"}}>🔗</div>
+              <div style={{fontSize:".9rem",marginBottom:".5rem"}}>No opportunities generated yet</div>
+              <div style={{fontSize:".8rem"}}>Click "Generate opportunities" to get AI-powered link building ideas specific to {selectedSite}</div>
+            </div>
+          )}
+          {linkOppsLoading && (
+            <div style={{padding:"3rem",textAlign:"center"}}>
+              <div className="spinner" style={{margin:"0 auto 1rem"}}/>
+              <div style={{fontSize:".85rem",color:"var(--text2)"}}>Analysing {selectedSite} and finding link opportunities…</div>
+            </div>
+          )}
+          {linkOpps.length > 0 && (
+            <div className="links-opp-grid">
+              {linkOpps.map((opp,i) => (
+                <div key={i} className="links-opp-card">
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:".4rem"}}>
+                    <span className={`links-opp-type ${diffColor(opp.difficulty)}`}>{opp.difficulty} · {opp.type}</span>
+                    <span style={{fontSize:".72rem",color:valColor(opp.value),fontWeight:700}}>{opp.value} value</span>
+                  </div>
+                  <div className="links-opp-title">{opp.title}</div>
+                  <div className="links-opp-desc">{opp.description}</div>
+                  {opp.example && (
+                    <div style={{fontSize:".75rem",color:"var(--blue)",background:"var(--bdim)",borderRadius:5,padding:".35rem .6rem"}}>
+                      💡 Example: {opp.example}
+                    </div>
+                  )}
+                  <div className="links-opp-meta">
+                    <span className="links-opp-tag">⏱ {opp.timeToResult}</span>
+                  </div>
+                  <div className="links-opp-actions">
+                    <button className="links-opp-btn primary" onClick={()=>{
+                      setLinkTemplate(opp.type.toLowerCase().replace(/ /g,"_").replace("guest_post","guest_post").replace("resource_page","resource_page").replace("broken_link","broken_link") || "guest_post");
+                      document.getElementById("links-outreach-section")?.scrollIntoView({behavior:"smooth"});
+                    }}>✍ Write outreach</button>
+                    <button className="links-opp-btn" onClick={()=>saveProspect(opp.example||opp.title, opp.type)}>
+                      + Add to tracker
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── Section 2: Outreach Templates ── */}
+        <div className="links-section" id="links-outreach-section">
+          <div className="links-section-head">
+            <div>
+              <div className="links-section-title">Outreach Email Generator</div>
+              <div className="links-section-sub">AI writes a personalised pitch — you send it</div>
+            </div>
+          </div>
+          <div className="links-template-tabs">
+            {templateTypes.map(t=>(
+              <div key={t.id} className={`links-template-tab ${linkTemplate===t.id?"active":""}`}
+                onClick={()=>{setLinkTemplate(t.id);setLinkTemplateOutput("");}}>
+                {t.label}
+              </div>
+            ))}
+          </div>
+          <div className="links-template-body">
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1rem"}}>
+              <div className="links-template-field">
+                <div className="links-template-label">Target site / contact</div>
+                <input className="links-template-input" placeholder="e.g. searchengineland.com or John at Acme Ltd"
+                  value={linkTemplateTarget} onChange={e=>setLinkTemplateTarget(e.target.value)}/>
+              </div>
+              <div className="links-template-field">
+                <div className="links-template-label">Additional context (optional)</div>
+                <input className="links-template-input" placeholder="e.g. we both serve HR professionals"
+                  value={linkTemplateContext} onChange={e=>setLinkTemplateContext(e.target.value)}/>
+              </div>
+            </div>
+            <button className="links-generate-btn" style={{width:"fit-content"}}
+              disabled={linkTemplateLoading||!linkTemplateTarget.trim()}
+              onClick={generateOutreachEmail}>
+              {linkTemplateLoading ? "⏳ Writing…" : "✨ Generate email"}
+            </button>
+            {linkTemplateOutput && (
+              <>
+                <div className="links-template-field">
+                  <div className="links-template-label">Your outreach email</div>
+                  <div className="links-template-output">{linkTemplateOutput}</div>
+                </div>
+                <div style={{display:"flex",gap:".65rem",flexWrap:"wrap"}}>
+                  <button className="links-opp-btn primary" onClick={()=>{
+                    navigator.clipboard.writeText(linkTemplateOutput).catch(()=>{});
+                    setCopiedEmail(true); setTimeout(()=>setCopiedEmail(false),1600);
+                  }}>{copiedEmail?"✓ Copied":"📋 Copy email"}</button>
+                  <button className="links-opp-btn" onClick={()=>{saveProspect(linkTemplateTarget,"Outreach");}}>
+                    + Add to tracker
+                  </button>
+                  <button className="links-opp-btn" onClick={()=>{setLinkTemplateOutput("");generateOutreachEmail();}}>
+                    ↻ Regenerate
+                  </button>
+                </div>
+                <div style={{fontSize:".75rem",color:"var(--text3)",background:"var(--s2)",borderRadius:7,padding:".65rem .85rem",lineHeight:1.6}}>
+                  💡 <strong>Before sending:</strong> personalise the opening line with something specific about their site, find the right contact using LinkedIn or Hunter.io, and follow up once after 5-7 days if no reply.
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Section 3: Prospect Tracker ── */}
+        <div className="links-section">
+          <div className="links-section-head">
+            <div>
+              <div className="links-section-title">Prospect Tracker</div>
+              <div className="links-section-sub">Track every outreach — drag prospects between columns as they progress</div>
+            </div>
+            <button className="links-opp-btn primary" onClick={()=>setAddingTo("identified")}>+ Add prospect</button>
+          </div>
+          <div className="links-tracker-cols">
+            {cols.map(col=>{
+              const colProspects = linkProspects.filter(p=>p.status===col.id);
+              return (
+                <div key={col.id} className="links-tracker-col">
+                  <div className="links-tracker-col-head">
+                    <span style={{color:col.color}}>{col.label}</span>
+                    <span className="links-tracker-col-count">{colProspects.length}</span>
+                  </div>
+                  <div className="links-tracker-cards">
+                    {colProspects.map(p=>(
+                      <div key={p.id} className="links-prospect-card">
+                        <div className="links-prospect-domain">{p.domain}</div>
+                        <div className="links-prospect-type">{p.type}</div>
+                        <div className="links-prospect-date">{p.date}</div>
+                        <div style={{display:"flex",gap:".35rem",marginTop:".5rem",flexWrap:"wrap"}}>
+                          {col.id!=="secured" && (
+                            <button className="links-opp-btn" style={{fontSize:".65rem",padding:".2rem .5rem"}}
+                              onClick={()=>{
+                                const next = cols[cols.findIndex(c=>c.id===col.id)+1];
+                                if(next) moveProspect(p.id, next.id);
+                              }}>→ Move forward</button>
+                          )}
+                          <button className="links-opp-btn" style={{fontSize:".65rem",padding:".2rem .5rem",color:"var(--red)"}}
+                            onClick={()=>deleteProspect(p.id)}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                    {/* Add form */}
+                    {addingTo===col.id ? (
+                      <div className="links-add-form">
+                        <input className="links-add-input" placeholder="Domain or site name"
+                          value={newDomain} onChange={e=>setNewDomain(e.target.value)}
+                          onKeyDown={e=>e.key==="Enter"&&newDomain.trim()&&(saveProspect(newDomain.trim(),newType,col.id),setNewDomain(""),setAddingTo(null))}
+                          autoFocus/>
+                        <select className="links-add-input" value={newType} onChange={e=>setNewType(e.target.value)}>
+                          {["Guest Post","Resource Page","Broken Link","Testimonial","Partnership","Directory","Other"].map(t=>(
+                            <option key={t}>{t}</option>
+                          ))}
+                        </select>
+                        <div className="links-add-row">
+                          <button className="links-add-save" onClick={()=>{
+                            if(newDomain.trim()){saveProspect(newDomain.trim(),newType,col.id);setNewDomain("");setAddingTo(null);}
+                          }}>Save</button>
+                          <button className="links-add-cancel" onClick={()=>{setNewDomain("");setAddingTo(null);}}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button className="links-add-btn" onClick={()=>setAddingTo(col.id)}>+ Add here</button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {linkProspects.length === 0 && (
+            <div style={{padding:"2rem",textAlign:"center",color:"var(--text3)",fontSize:".82rem"}}>
+              No prospects tracked yet — generate opportunities above and click "Add to tracker"
+            </div>
+          )}
+        </div>
+
+        {/* Guide */}
+        <div style={{background:"var(--s1)",border:"1px solid var(--border)",borderRadius:12,padding:"1.25rem 1.5rem"}}>
+          <div style={{fontWeight:700,marginBottom:"1rem",fontSize:".9rem"}}>📖 Link building in 6 steps</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:"1rem"}}>
+            {[
+              ["1. Generate opportunities","Click Generate above to get AI-powered link ideas specific to your site and industry"],
+              ["2. Pick your targets","Start with Easy difficulty — directories and partner links require the least effort"],
+              ["3. Find the contact","Use LinkedIn or Hunter.io (free tier) to find the right person to email"],
+              ["4. Write your pitch","Use the Outreach Generator — enter the target site and get a ready-to-send email"],
+              ["5. Send and track","Add prospects to the tracker as you contact them. Move them forward as they progress"],
+              ["6. Follow up once","If no reply after 7 days, send one polite follow-up. Most links come from the second email"],
+            ].map(([title,desc])=>(
+              <div key={title} style={{background:"var(--s2)",borderRadius:8,padding:".85rem 1rem"}}>
+                <div style={{fontSize:".78rem",fontWeight:700,marginBottom:".35rem"}}>{title}</div>
+                <div style={{fontSize:".75rem",color:"var(--text2)",lineHeight:1.6}}>{desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ─────────────────────────────────────────────────────────────
   // ROOT
   // ─────────────────────────────────────────────────────────────
   return (
@@ -3405,6 +3857,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
           {screen==="dashboard"  && <DashboardContent/>}
           {screen==="siteDetail" && <SiteDetailContent/>}
           {screen==="content"    && <ContentGenerator/>}
+          {screen==="links"      && <LinkBuildingScreen/>}
           {screen==="reports"    && <ReportsTab/>}
           {screen==="admin"      && isAdmin && <AdminPanel/>}
           {screen==="admin"      && !isAdmin && <div className="content" style={{textAlign:"center",paddingTop:"4rem",color:"var(--text3)"}}>Access denied.</div>}
