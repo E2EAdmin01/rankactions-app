@@ -3214,245 +3214,335 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
   // REPORTS
   // ─────────────────────────────────────────────────────────────
   const ReportsTab = () => {
-    const [priorityFilter, setPriorityFilter] = useState("all");
+    const [reportSummary, setReportSummary] = useState(null);
+    const [summaryGen, setSummaryGen] = useState(false);
 
-    // Build per-site data from live or demo data
-    const siteReports = sites.map(site => {
-      const isActive = site === selectedSite;
-      const kpis = isActive && siteData ? {
-        traffic:  siteData.totals.clicks.toLocaleString(),
-        position: siteData.totals.avgPosition,
-        ctr:      siteData.totals.avgCtr,
-        live: true,
-      } : {
-        traffic:  Math.floor(Math.random()*3000+500).toLocaleString(),
-        position: (Math.random()*20+5).toFixed(1),
-        ctr:      (Math.random()*5+1).toFixed(1) + "%",
-        live: false,
-      };
+    const fixes = getPriorityFixes();
+    const seoRows = getSeoRows();
+    const completedFixes = [...doneFixes];
+    const prospects = linkProspects;
 
-      // Generate demo actions per site
-      const seed = site.length;
-      const actions = [
-        ...(seed%3===0 ? [{level:"high",   color:"#f03e5f", label:"HIGH IMPACT",  text:"Improve homepage title tag"}]  : []),
-        ...(seed%2===0 ? [{level:"high",   color:"#f03e5f", label:"HIGH IMPACT",  text:"Fix missing meta descriptions"}] : []),
-        {level:"medium", color:"#f5a623", label:"OPPORTUNITY", text:"Improve CTR on /services page"},
-        {level:"medium", color:"#f5a623", label:"OPPORTUNITY", text:"Add internal links to blog posts"},
-        {level:"low",    color:"#0fdb8a", label:"QUICK WIN",   text:"Add schema markup to homepage"},
-      ];
-      return { site, kpis, actions };
-    });
+    // Keyword groupings from real data
+    const kwPage1    = siteData?.keywords?.filter(k => k.position <= 10) || [];
+    const kwStriking = siteData?.keywords?.filter(k => k.position > 10 && k.position <= 20) || [];
+    const kwPage2Plus= siteData?.keywords?.filter(k => k.position > 20) || [];
 
-    // Aggregate priority counts across all sites
-    const totals = siteReports.reduce((acc, sr) => {
-      sr.actions.forEach(a => {
-        if (a.level==="high")   acc.high++;
-        else if (a.level==="medium") acc.medium++;
-        else acc.low++;
-      });
-      return acc;
-    }, {high:0, medium:0, low:0});
-    const total = totals.high + totals.medium + totals.low;
-
-    // Donut chart via SVG
-    const DonutChart = () => {
-      const cx=90, cy=90, r=65, stroke=22;
-      const circ = 2 * Math.PI * r;
-      const segments = [
-        {label:"High",    count:totals.high,   color:"#f03e5f"},
-        {label:"Medium",  count:totals.medium, color:"#f5a623"},
-        {label:"Quick Win", count:totals.low,  color:"#0fdb8a"},
-      ];
-      let offset = 0;
-      const arcs = segments.map(seg => {
-        const pct  = total > 0 ? seg.count / total : 0;
-        const dash = pct * circ;
-        const gap  = circ - dash;
-        const arc  = { ...seg, dash, gap, offset: offset * circ };
-        offset += pct;
-        return arc;
-      });
-      return (
-        <svg width="180" height="180" viewBox="0 0 180 180">
-          {total === 0 ? (
-            <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth={stroke}/>
-          ) : arcs.map((arc, i) => (
-            <circle key={i} cx={cx} cy={cy} r={r} fill="none"
-              stroke={arc.color} strokeWidth={stroke}
-              strokeDasharray={`${arc.dash} ${arc.gap}`}
-              strokeDashoffset={-arc.offset}
-              style={{transform:"rotate(-90deg)",transformOrigin:"50% 50%"}}/>
-          ))}
-          <text x={cx} y={cy-8}  textAnchor="middle" style={{fill:"var(--text)",fontSize:24,fontWeight:700,fontFamily:"var(--mono)"}}>{total}</text>
-          <text x={cx} y={cy+12} textAnchor="middle" style={{fill:"var(--text3)",fontSize:11,fontFamily:"system-ui"}}>total actions</text>
-        </svg>
-      );
+    // Link building stats
+    const linkStats = {
+      identified: prospects.filter(p=>p.status==="identified").length,
+      contacted:  prospects.filter(p=>p.status==="contacted").length,
+      replied:    prospects.filter(p=>p.status==="replied").length,
+      secured:    prospects.filter(p=>p.status==="secured").length,
+      declined:   prospects.filter(p=>p.status==="declined").length,
+      total:      prospects.length,
     };
 
-    // Filter actions for bar chart and list
-    const filteredSiteReports = siteReports.map(sr => ({
-      ...sr,
-      actions: priorityFilter==="all" ? sr.actions : sr.actions.filter(a=>a.level===priorityFilter)
-    }));
+    // Generate AI weekly summary
+    const generateSummary = async () => {
+      if (!siteData) return;
+      setSummaryGen(true);
+      try {
+        const kwSummary = siteData.keywords?.slice(0,10).map(k=>`"${k.keyword}" #${k.position} (${k.clicks} clicks)`).join(", ");
+        const txt = await callClaude(
+          `Write a concise weekly SEO performance summary for ${selectedSite}.
+
+DATA:
+- Total clicks: ${siteData.totals.clicks} in last ${siteData.dateRange?.days||28} days
+- Total impressions: ${siteData.totals.impressions}
+- Average position: ${siteData.totals.avgPosition}
+- Average CTR: ${siteData.totals.avgCtr}
+- Top keywords: ${kwSummary}
+- Keywords on page 1: ${kwPage1.length}
+- Keywords on page 2 (striking distance): ${kwStriking.length}
+- Actions completed: ${completedFixes.length}
+- Link prospects tracked: ${linkStats.total} (${linkStats.secured} secured)
+
+Write 3-4 short paragraphs: overall performance, biggest opportunities, what to focus on this week. Be specific, use the actual numbers. Plain English, no jargon. Under 200 words.`,
+          "SEO analyst writing a weekly client report. Be specific, data-driven and actionable. No fluff."
+        );
+        setReportSummary(txt.trim());
+      } catch { setReportSummary("Could not generate summary — please try again."); }
+      setSummaryGen(false);
+    };
+
+    // Export report as text
+    const exportReport = () => {
+      const lines = [
+        `RANKACTIONS WEEKLY REPORT — ${selectedSite}`,
+        `Generated: ${new Date().toLocaleDateString("en-GB")}`,
+        ``,
+        `── PERFORMANCE ──`,
+        siteData ? `Clicks: ${siteData.totals.clicks} | Impressions: ${siteData.totals.impressions} | Avg Position: ${siteData.totals.avgPosition} | CTR: ${siteData.totals.avgCtr}` : `No live data — connect Google Search Console`,
+        ``,
+        `── KEYWORD RANKINGS ──`,
+        `Page 1 (positions 1-10): ${kwPage1.length} keywords`,
+        `Striking distance (11-20): ${kwStriking.length} keywords`,
+        `Page 2+ (21+): ${kwPage2Plus.length} keywords`,
+        ``,
+        ...(siteData?.keywords?.slice(0,15).map(k => `  "${k.keyword}" — #${k.position} — ${k.clicks} clicks — ${k.impressions} impressions`) || ["  No data"]),
+        ``,
+        `── PRIORITY ACTIONS ──`,
+        ...fixes.map(f => `  [${f.label}] ${f.title}`),
+        ``,
+        `── COMPLETED ──`,
+        completedFixes.length > 0 ? completedFixes.map(id => `  ✓ ${id}`).join("\n") : `  No actions completed yet`,
+        ``,
+        `── LINK BUILDING ──`,
+        `Identified: ${linkStats.identified} | Contacted: ${linkStats.contacted} | Replied: ${linkStats.replied} | Secured: ${linkStats.secured}`,
+        ``,
+        reportSummary ? `── AI SUMMARY ──\n${reportSummary}` : ``,
+        ``,
+        `Report by RankActions · rankactions.com`,
+      ];
+      const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url;
+      a.download = `rankactions-report-${selectedSite.replace(/[^a-z0-9]/gi,"_")}-${new Date().toISOString().slice(0,10)}.txt`;
+      a.click(); URL.revokeObjectURL(url);
+    };
+
+    const cardStyle = {background:"var(--card)",border:"1px solid var(--b2)",borderRadius:12,padding:"1.25rem"};
+    const headStyle = {fontSize:".72rem",fontWeight:700,textTransform:"uppercase",letterSpacing:".08em",color:"var(--text3)",marginBottom:".75rem"};
+    const kpiVal = {fontSize:"1.6rem",fontWeight:800,fontFamily:"var(--mono)",letterSpacing:"-.02em"};
+    const kpiLabel = {fontSize:".7rem",color:"var(--text3)",marginTop:".15rem"};
 
     return (
       <div className="reports-wrap">
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"1rem"}}>
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"1rem",marginBottom:"1.5rem"}}>
           <div>
-            <div style={{fontSize:"1.1rem",fontWeight:700,letterSpacing:"-.03em"}}>Reports</div>
+            <div style={{fontSize:"1.1rem",fontWeight:700,letterSpacing:"-.03em"}}>Weekly Report</div>
             <div style={{fontSize:".82rem",color:"var(--text2)",marginTop:".2rem"}}>
-              {sites.length} site{sites.length!==1?"s":""} · {total} actions outstanding · {siteData?"Live data":"Demo data"}
+              {selectedSite} · {siteData ? `Live data · Last ${siteData.dateRange?.days||28} days` : "Demo data"} · {new Date().toLocaleDateString("en-GB")}
             </div>
           </div>
-          {/* Priority filter */}
-          <div className="reports-filter-row">
-            {[
-              {id:"all",    label:"All"},
-              {id:"high",   label:"🔴 High"},
-              {id:"medium", label:"🟡 Medium"},
-              {id:"low",    label:"🟢 Quick Wins"},
-            ].map(f=>(
-              <button key={f.id} className={`reports-filter-btn ${f.id} ${priorityFilter===f.id?"active":""}`}
-                onClick={()=>setPriorityFilter(f.id)}>
-                {f.label}
-              </button>
-            ))}
+          <div style={{display:"flex",gap:".5rem"}}>
+            <button style={{background:"none",border:"1px solid var(--b2)",borderRadius:8,padding:".45rem .9rem",fontSize:".78rem",color:"var(--text2)",cursor:"pointer",fontFamily:"inherit"}} onClick={exportReport}>
+              📥 Export report
+            </button>
           </div>
         </div>
 
-        {/* ── Section 1: Priority Overview ── */}
-        <div className="reports-section">
-          <div className="reports-section-head">
-            <div>
-              <div className="reports-section-title">Priority Overview</div>
-              <div className="reports-section-sub">Actions outstanding across all your sites</div>
+        {/* KPI Strip */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:".75rem",marginBottom:"1rem"}}>
+          {[
+            {val: siteData?.totals?.clicks?.toLocaleString() || "—", lbl:"Clicks (28d)", color:"var(--text)"},
+            {val: siteData?.totals?.impressions?.toLocaleString() || "—", lbl:"Impressions", color:"var(--text)"},
+            {val: siteData?.totals?.avgPosition || "—", lbl:"Avg Position", color: siteData && parseFloat(siteData.totals.avgPosition) < 15 ? "var(--green)" : "var(--amber)"},
+            {val: siteData?.totals?.avgCtr || "—", lbl:"Click-Through Rate", color: siteData && parseFloat(siteData.totals.avgCtr) > 3 ? "var(--green)" : "var(--amber)"},
+          ].map((k,i) => (
+            <div key={i} style={cardStyle}>
+              <div style={{...kpiVal, color:k.color}}>{k.val}</div>
+              <div style={kpiLabel}>{k.lbl}</div>
             </div>
-          </div>
-          <div className="reports-charts-row">
-            {/* Donut */}
-            <div className="reports-donut-wrap">
-              <DonutChart/>
-              <div className="reports-donut-legend">
-                {[
-                  {label:"High impact",  count:totals.high,   color:"#f03e5f"},
-                  {label:"Opportunity",  count:totals.medium, color:"#f5a623"},
-                  {label:"Quick wins",   count:totals.low,    color:"#0fdb8a"},
-                ].map(({label,count,color})=>(
-                  <div key={label} className="reports-legend-item">
-                    <div className="reports-legend-dot" style={{background:color}}/>
-                    <span className="reports-legend-label">{label}</span>
-                    <span className="reports-legend-count">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          ))}
+        </div>
 
-            {/* Bar chart per site */}
-            <div className="reports-bar-wrap">
-              <div className="reports-bar-title">Actions by site</div>
-              {filteredSiteReports.map(({site, actions}) => {
-                const high   = actions.filter(a=>a.level==="high").length;
-                const medium = actions.filter(a=>a.level==="medium").length;
-                const low    = actions.filter(a=>a.level==="low").length;
-                const tot    = high + medium + low;
-                const pct    = (n,t) => t>0 ? `${(n/t*100).toFixed(0)}%` : "0%";
-                return (
-                  <div key={site} className="reports-site-row"
-                    style={{cursor:"pointer"}} onClick={()=>{setSelectedSite(site);setScreen("siteDetail");}}>
-                    <div className="reports-site-name" title={site}>
-                      {site===selectedSite && <span style={{color:"var(--green)",marginRight:.3+"rem"}}>●</span>}
-                      {site}
-                    </div>
-                    <div className="reports-bar-track">
-                      {high>0   && <div className="reports-bar-seg" style={{width:pct(high,tot),  background:"#f03e5f"}}/>}
-                      {medium>0 && <div className="reports-bar-seg" style={{width:pct(medium,tot),background:"#f5a623"}}/>}
-                      {low>0    && <div className="reports-bar-seg" style={{width:pct(low,tot),   background:"#0fdb8a"}}/>}
-                      {tot===0  && <div className="reports-bar-seg" style={{width:"100%",background:"var(--border)"}}/>}
-                    </div>
-                    <div className="reports-bar-total">{tot}</div>
+        {/* AI Weekly Summary */}
+        <div style={{...cardStyle, marginBottom:"1rem"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:".75rem"}}>
+            <div style={headStyle}>📝 Weekly Summary</div>
+            <button style={{background:"var(--green)",color:"white",border:"none",borderRadius:6,padding:".35rem .75rem",fontSize:".75rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} disabled={summaryGen || !siteData} onClick={generateSummary}>
+              {summaryGen ? "⏳ Generating…" : reportSummary ? "🔄 Regenerate" : "✨ Generate summary"}
+            </button>
+          </div>
+          {reportSummary ? (
+            <div style={{fontSize:".85rem",color:"var(--text2)",lineHeight:1.75,whiteSpace:"pre-wrap"}}>{reportSummary}</div>
+          ) : (
+            <div style={{fontSize:".82rem",color:"var(--text3)",textAlign:"center",padding:"1rem 0"}}>
+              {siteData ? "Click 'Generate summary' for an AI-written weekly performance review" : "Connect Google Search Console to generate your weekly summary"}
+            </div>
+          )}
+        </div>
+
+        {/* Two-column: Keyword Rankings + Priority Actions */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1rem",marginBottom:"1rem"}}>
+
+          {/* Keyword Rankings */}
+          <div style={cardStyle}>
+            <div style={headStyle}>📊 Keyword Rankings</div>
+            {siteData?.keywords?.length > 0 ? (
+              <>
+                {/* Position distribution bar */}
+                <div style={{display:"flex",gap:2,marginBottom:"1rem",borderRadius:6,overflow:"hidden",height:28}}>
+                  {kwPage1.length > 0 && <div style={{flex:kwPage1.length,background:"#0fdb8a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".65rem",fontWeight:700,color:"#000"}}>{kwPage1.length} on page 1</div>}
+                  {kwStriking.length > 0 && <div style={{flex:kwStriking.length,background:"#f5a623",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".65rem",fontWeight:700,color:"#000"}}>{kwStriking.length} striking</div>}
+                  {kwPage2Plus.length > 0 && <div style={{flex:kwPage2Plus.length,background:"#f03e5f",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".65rem",fontWeight:700,color:"#fff"}}>{kwPage2Plus.length} page 2+</div>}
+                </div>
+                {/* Top keywords table */}
+                <div style={{maxHeight:300,overflow:"auto"}}>
+                  <table style={{width:"100%",fontSize:".78rem",borderCollapse:"collapse"}}>
+                    <thead>
+                      <tr style={{borderBottom:"1px solid var(--b2)"}}>
+                        <th style={{textAlign:"left",padding:".4rem .3rem",color:"var(--text3)",fontWeight:600,fontSize:".68rem"}}>KEYWORD</th>
+                        <th style={{textAlign:"right",padding:".4rem .3rem",color:"var(--text3)",fontWeight:600,fontSize:".68rem"}}>POS</th>
+                        <th style={{textAlign:"right",padding:".4rem .3rem",color:"var(--text3)",fontWeight:600,fontSize:".68rem"}}>CLICKS</th>
+                        <th style={{textAlign:"right",padding:".4rem .3rem",color:"var(--text3)",fontWeight:600,fontSize:".68rem"}}>IMP</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {siteData.keywords.slice(0,12).map((k,i) => (
+                        <tr key={i} style={{borderBottom:"1px solid var(--b2)"}}>
+                          <td style={{padding:".35rem .3rem",color:"var(--text)",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{k.keyword}</td>
+                          <td style={{textAlign:"right",padding:".35rem .3rem",fontWeight:700,fontFamily:"var(--mono)",color: k.position<=10?"#0fdb8a":k.position<=20?"#f5a623":"#f03e5f"}}>#{k.position}</td>
+                          <td style={{textAlign:"right",padding:".35rem .3rem",color:"var(--text2)"}}>{k.clicks}</td>
+                          <td style={{textAlign:"right",padding:".35rem .3rem",color:"var(--text3)"}}>{k.impressions}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div style={{fontSize:".82rem",color:"var(--text3)",textAlign:"center",padding:"2rem 0"}}>Connect Google Search Console to see keyword rankings</div>
+            )}
+          </div>
+
+          {/* Priority Actions */}
+          <div style={cardStyle}>
+            <div style={headStyle}>🎯 Priority Actions</div>
+            {fixes.length > 0 ? fixes.map((fix,i) => {
+              const isDone = doneFixes.has(fix.id);
+              return (
+                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:".6rem",padding:".55rem 0",borderBottom: i<fixes.length-1 ? "1px solid var(--b2)" : "none",opacity:isDone?.5:1}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:fix.color,flexShrink:0,marginTop:".35rem"}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:".82rem",fontWeight:600,color:isDone?"var(--text3)":"var(--text)",textDecoration:isDone?"line-through":"none"}}>{fix.title}</div>
+                    <div style={{fontSize:".72rem",color:"var(--text3)",marginTop:".15rem"}}>{fix.label} · {fix.desc?.slice(0,60)||""}</div>
                   </div>
-                );
-              })}
-              {/* Legend */}
-              <div style={{display:"flex",gap:"1rem",marginTop:".5rem",flexWrap:"wrap"}}>
-                {[["#f03e5f","High"],["#f5a623","Medium"],["#0fdb8a","Quick Win"]].map(([c,l])=>(
-                  <div key={l} style={{display:"flex",alignItems:"center",gap:".35rem",fontSize:".72rem",color:"var(--text3)"}}>
-                    <div style={{width:10,height:10,borderRadius:2,background:c,flexShrink:0}}/>
-                    {l}
-                  </div>
-                ))}
-                <div style={{marginLeft:"auto",fontSize:".72rem",color:"var(--text3)"}}>Click a site to view its details →</div>
-              </div>
+                  {isDone && <span style={{fontSize:".7rem",color:"var(--green)",fontWeight:600}}>Done ✓</span>}
+                </div>
+              );
+            }) : (
+              <div style={{fontSize:".82rem",color:"var(--green)",textAlign:"center",padding:"2rem 0"}}>✓ No actions outstanding</div>
+            )}
+            <div style={{marginTop:".75rem",textAlign:"center"}}>
+              <span style={{fontSize:".75rem",color:"var(--blue)",cursor:"pointer"}} onClick={()=>setScreen("siteDetail")}>View all in Site Detail →</span>
             </div>
           </div>
         </div>
 
-        {/* ── Section 2: Per-site Performance ── */}
-        <div className="reports-section">
-          <div className="reports-section-head">
-            <div>
-              <div className="reports-section-title">Site Performance</div>
-              <div className="reports-section-sub">Traffic, rankings and top actions per site</div>
-            </div>
-            {!siteData && (
-              <div style={{fontSize:".75rem",color:"var(--amber)",background:"var(--adim)",padding:".35rem .75rem",borderRadius:6}}>
-                ⚠ Connect Search Console for live data
+        {/* Two-column: Striking Distance + Completed Actions */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1rem",marginBottom:"1rem"}}>
+
+          {/* Striking Distance Keywords */}
+          <div style={cardStyle}>
+            <div style={headStyle}>🎯 Striking Distance (positions 11-20)</div>
+            <div style={{fontSize:".78rem",color:"var(--text2)",marginBottom:".75rem"}}>These keywords are close to page 1 — small improvements could unlock significant traffic</div>
+            {kwStriking.length > 0 ? kwStriking.slice(0,8).map((k,i) => (
+              <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:".4rem 0",borderBottom:"1px solid var(--b2)"}}>
+                <div style={{fontSize:".8rem",color:"var(--text)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{k.keyword}</div>
+                <div style={{display:"flex",alignItems:"center",gap:".75rem",flexShrink:0}}>
+                  <span style={{fontSize:".75rem",fontWeight:700,fontFamily:"var(--mono)",color:"#f5a623"}}>#{k.position}</span>
+                  <span style={{fontSize:".7rem",color:"var(--text3)"}}>{k.impressions} imp</span>
+                </div>
+              </div>
+            )) : (
+              <div style={{fontSize:".82rem",color:"var(--text3)",textAlign:"center",padding:"1.5rem 0"}}>
+                {siteData ? "No keywords in striking distance right now" : "Connect GSC to see opportunities"}
               </div>
             )}
           </div>
-          <div className="reports-perf-grid">
-            {filteredSiteReports.map(({site, kpis, actions}) => (
-              <div key={site} className="reports-perf-card">
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:".5rem"}}>
-                  <div style={{fontSize:".85rem",fontWeight:700,display:"flex",alignItems:"center",gap:".4rem"}}>
-                    {site===selectedSite && <span style={{color:"var(--green)",fontSize:".65rem"}}>● Live</span>}
-                    {site}
+
+          {/* Completed Actions */}
+          <div style={cardStyle}>
+            <div style={headStyle}>✅ Completed Actions</div>
+            {completedFixes.length > 0 ? (
+              <>
+                <div style={{fontSize:"1.4rem",fontWeight:800,fontFamily:"var(--mono)",color:"var(--green)",marginBottom:".5rem"}}>{completedFixes.length}</div>
+                <div style={{fontSize:".78rem",color:"var(--text2)",marginBottom:".75rem"}}>actions completed for {selectedSite}</div>
+                {completedFixes.slice(0,6).map((id,i) => (
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:".5rem",padding:".3rem 0",fontSize:".78rem"}}>
+                    <span style={{color:"var(--green)"}}>✓</span>
+                    <span style={{color:"var(--text2)"}}>{id.replace("live-","Action #").replace("demo-","Fix: ")}</span>
                   </div>
-                  <button style={{background:"none",border:"1px solid var(--border)",borderRadius:6,padding:".25rem .6rem",fontFamily:"var(--font)",fontSize:".72rem",color:"var(--blue)",cursor:"pointer"}}
-                    onClick={()=>{setSelectedSite(site);setScreen("siteDetail");}}>
-                    View →
-                  </button>
-                </div>
-                <div className="reports-perf-kpis">
-                  {[
-                    {val:kpis.traffic,  lbl:"Clicks/mo"},
-                    {val:kpis.position, lbl:"Avg position"},
-                    {val:kpis.ctr,      lbl:"CTR"},
-                  ].map(({val,lbl})=>(
-                    <div key={lbl} className="reports-perf-kpi">
-                      <div className="reports-perf-kpi-val">{val}</div>
-                      <div className="reports-perf-kpi-lbl">{lbl}</div>
-                    </div>
-                  ))}
-                </div>
-                {/* Top actions for this site filtered */}
-                <div className="reports-actions-list">
-                  {actions.length===0
-                    ? <div style={{fontSize:".75rem",color:"var(--green)"}}>✓ No {priorityFilter==="all"?"":priorityFilter+" "}actions outstanding</div>
-                    : actions.slice(0,3).map((a,i)=>(
-                        <div key={i} className="reports-action-item">
-                          <div className="reports-priority-dot" style={{background:a.color}}/>
-                          {a.text}
-                        </div>
-                      ))
-                  }
-                  {actions.length>3 && (
-                    <div style={{fontSize:".72rem",color:"var(--text3)",paddingLeft:".65rem"}}>
-                      +{actions.length-3} more — <span style={{color:"var(--blue)",cursor:"pointer"}} onClick={()=>{setSelectedSite(site);setScreen("siteDetail");}}>view all</span>
-                    </div>
-                  )}
-                </div>
+                ))}
+              </>
+            ) : (
+              <div style={{textAlign:"center",padding:"1.5rem 0"}}>
+                <div style={{fontSize:"1.5rem",marginBottom:".5rem"}}>📋</div>
+                <div style={{fontSize:".82rem",color:"var(--text3)"}}>No actions completed yet for this site</div>
+                <div style={{fontSize:".75rem",color:"var(--text3)",marginTop:".25rem"}}>Mark actions as done on the Dashboard to track progress here</div>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
-        {/* Demo notice */}
-        {!siteData && (
-          <div style={{background:"var(--bdim)",border:"1px solid rgba(77,123,255,.15)",borderRadius:8,padding:".75rem 1rem",fontSize:".78rem",color:"var(--blue)"}}>
-            📊 Performance data is estimated. Connect Google Search Console to see real traffic, positions and CTR for each site.
+        {/* Link Building Progress */}
+        <div style={{...cardStyle, marginBottom:"1rem"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={headStyle}>🔗 Link Building Progress</div>
+            <span style={{fontSize:".75rem",color:"var(--blue)",cursor:"pointer"}} onClick={()=>setScreen("links")}>Full tracker →</span>
           </div>
-        )}
+          {linkStats.total > 0 ? (
+            <>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:".5rem",marginBottom:"1rem"}}>
+                {[
+                  {label:"Identified", count:linkStats.identified, color:"var(--text3)"},
+                  {label:"Contacted",  count:linkStats.contacted,  color:"var(--blue)"},
+                  {label:"Replied",    count:linkStats.replied,    color:"#f5a623"},
+                  {label:"Secured",    count:linkStats.secured,    color:"var(--green)"},
+                  {label:"Declined",   count:linkStats.declined,   color:"var(--red)"},
+                ].map(s => (
+                  <div key={s.label} style={{textAlign:"center",padding:".6rem",background:"var(--bdim)",borderRadius:8}}>
+                    <div style={{fontSize:"1.2rem",fontWeight:800,fontFamily:"var(--mono)",color:s.color}}>{s.count}</div>
+                    <div style={{fontSize:".68rem",color:"var(--text3)",marginTop:".2rem"}}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Pipeline bar */}
+              {linkStats.total > 0 && (
+                <div style={{display:"flex",gap:2,borderRadius:6,overflow:"hidden",height:22}}>
+                  {linkStats.identified > 0 && <div style={{flex:linkStats.identified,background:"var(--text3)"}}/>}
+                  {linkStats.contacted > 0 && <div style={{flex:linkStats.contacted,background:"var(--blue)"}}/>}
+                  {linkStats.replied > 0 && <div style={{flex:linkStats.replied,background:"#f5a623"}}/>}
+                  {linkStats.secured > 0 && <div style={{flex:linkStats.secured,background:"var(--green)"}}/>}
+                  {linkStats.declined > 0 && <div style={{flex:linkStats.declined,background:"var(--red)"}}/>}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{textAlign:"center",padding:"1.5rem 0"}}>
+              <div style={{fontSize:".82rem",color:"var(--text3)"}}>No link prospects tracked yet</div>
+              <button style={{marginTop:".5rem",background:"none",border:"1px solid var(--b2)",borderRadius:6,padding:".35rem .75rem",fontSize:".78rem",color:"var(--blue)",cursor:"pointer",fontFamily:"inherit"}} onClick={()=>setScreen("links")}>Start link building →</button>
+            </div>
+          )}
+        </div>
+
+        {/* Top Pages Performance */}
+        <div style={{...cardStyle, marginBottom:"1rem"}}>
+          <div style={headStyle}>📄 Top Pages by Clicks</div>
+          {siteData?.pages?.length > 0 ? (
+            <table style={{width:"100%",fontSize:".78rem",borderCollapse:"collapse"}}>
+              <thead>
+                <tr style={{borderBottom:"1px solid var(--b2)"}}>
+                  <th style={{textAlign:"left",padding:".4rem .3rem",color:"var(--text3)",fontWeight:600,fontSize:".68rem"}}>PAGE</th>
+                  <th style={{textAlign:"right",padding:".4rem .3rem",color:"var(--text3)",fontWeight:600,fontSize:".68rem"}}>CLICKS</th>
+                  <th style={{textAlign:"right",padding:".4rem .3rem",color:"var(--text3)",fontWeight:600,fontSize:".68rem"}}>IMPRESSIONS</th>
+                  <th style={{textAlign:"right",padding:".4rem .3rem",color:"var(--text3)",fontWeight:600,fontSize:".68rem"}}>CTR</th>
+                  <th style={{textAlign:"right",padding:".4rem .3rem",color:"var(--text3)",fontWeight:600,fontSize:".68rem"}}>POSITION</th>
+                </tr>
+              </thead>
+              <tbody>
+                {siteData.pages.slice(0,10).map((p,i) => (
+                  <tr key={i} style={{borderBottom:"1px solid var(--b2)"}}>
+                    <td style={{padding:".35rem .3rem",color:"var(--text)",maxWidth:250,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.page}</td>
+                    <td style={{textAlign:"right",padding:".35rem .3rem",fontWeight:600,color:"var(--text)"}}>{p.clicks}</td>
+                    <td style={{textAlign:"right",padding:".35rem .3rem",color:"var(--text2)"}}>{p.impressions}</td>
+                    <td style={{textAlign:"right",padding:".35rem .3rem",color: parseFloat(p.ctr)>3?"var(--green)":"var(--text3)"}}>{p.ctr}</td>
+                    <td style={{textAlign:"right",padding:".35rem .3rem",fontFamily:"var(--mono)",color: p.position<=10?"#0fdb8a":p.position<=20?"#f5a623":"#f03e5f"}}>#{p.position}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div style={{fontSize:".82rem",color:"var(--text3)",textAlign:"center",padding:"2rem 0"}}>Connect Google Search Console to see page performance</div>
+          )}
+        </div>
+
+        <div style={{fontSize:".75rem",color:"var(--text3)",textAlign:"center",padding:".5rem 0"}}>
+          Report generated by RankActions · {new Date().toLocaleDateString("en-GB")} · Data from Google Search Console
+        </div>
       </div>
     );
   };
