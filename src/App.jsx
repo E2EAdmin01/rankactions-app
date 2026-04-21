@@ -1577,16 +1577,27 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
             </ul>
           </div>
         </div>
-        <button className="plan-continue-btn" onClick={()=>{
-          setPlan(selPlan);
-          localStorage.setItem("rankactions_plan", selPlan);
-          localStorage.setItem("rankactions_plan_chosen", "1");
-          localStorage.setItem("rankactions_billing", planBilling);
-          setShowPlan(false);
+        <button className="plan-continue-btn" onClick={async ()=>{
+          if (selPlan === "free") {
+            setPlan("free");
+            localStorage.setItem("rankactions_plan", "free");
+            localStorage.setItem("rankactions_plan_chosen", "1");
+            setShowPlan(false);
+          } else {
+            // Redirect to Stripe Checkout for paid plans
+            const priceId = selPlan === "pro"
+              ? (isAnnual ? STRIPE_PRICES.pro_annual : STRIPE_PRICES.pro_monthly)
+              : (isAnnual ? STRIPE_PRICES.agency_annual : STRIPE_PRICES.agency_monthly);
+            localStorage.setItem("rankactions_plan_chosen", "1");
+            setShowPlan(false);
+            await startCheckout(priceId);
+          }
         }}>
-          {selPlan==="free" ? "Continue with Free →" : `Start with ${selPlan==="agency"?"Agency":"Pro"} ${isAnnual?"(Annual)":"(Monthly)"} →`}
+          {selPlan==="free" ? "Continue with Free →" : `Subscribe to ${selPlan==="agency"?"Agency":"Pro"} →`}
         </button>
         <div className="plan-skip" onClick={()=>{
+          setPlan("free");
+          localStorage.setItem("rankactions_plan","free");
           localStorage.setItem("rankactions_plan_chosen","1");
           setShowPlan(false);
         }}>Skip for now — start with Free</div>
@@ -2511,48 +2522,148 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
   // ─────────────────────────────────────────────────────────────
   // UPGRADE MODAL
   // ─────────────────────────────────────────────────────────────
+  const STRIPE_PRICES = {
+    pro_monthly:    'price_1TOf3kPxXBgdsxBIjlqDg93H',
+    pro_annual:     'price_1TOf5DPxXBgdsxBIhil9CD59',
+    agency_monthly: 'price_1TOf44PxXBgdsxBIMfYph4FF',
+    agency_annual:  'price_1TOf4kPxXBgdsxBIEXUjDAlx',
+  };
+
+  const startCheckout = async (priceId) => {
+    try {
+      const res = await authFetch(`${WORKER_URL}/api/stripe/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceId,
+          clerkId: user?.id,
+          email: user?.primaryEmailAddress?.emailAddress,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert("Something went wrong — please try again.");
+      }
+    } catch (err) {
+      console.error("Checkout error:", err);
+      alert("Could not start checkout — please try again.");
+    }
+  };
+
+  const openBillingPortal = async () => {
+    try {
+      const res = await authFetch(`${WORKER_URL}/api/stripe/portal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch (err) {
+      console.error("Portal error:", err);
+    }
+  };
+
+  // Handle Stripe return
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("stripe") === "success") {
+      // Refresh profile from server to get updated plan
+      setTimeout(async () => {
+        try {
+          const res = await authFetch(`${WORKER_URL}/api/user/profile?clerkId=${encodeURIComponent(user?.id)}`);
+          const data = await res.json();
+          if (data.found && data.plan) {
+            setPlan(data.plan);
+            localStorage.setItem("rankactions_plan", data.plan);
+          }
+        } catch {}
+      }, 2000); // Wait 2s for webhook to process
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("stripe") === "cancelled") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   const UpgradeModal = () => {
+    const [upgradePlan, setUpgradePlan] = useState("pro");
     const [billing, setBilling] = useState("monthly");
+    const [loading, setLoading] = useState(false);
+
+    const prices = {
+      pro:    { monthly: "£29",  annual: "£290", save: "£58",  monthlyEff: "£24.17" },
+      agency: { monthly: "£59",  annual: "£590", save: "£118", monthlyEff: "£49.17" },
+    };
+    const p = prices[upgradePlan];
+
+    const priceId = upgradePlan === "pro"
+      ? (billing === "annual" ? STRIPE_PRICES.pro_annual : STRIPE_PRICES.pro_monthly)
+      : (billing === "annual" ? STRIPE_PRICES.agency_annual : STRIPE_PRICES.agency_monthly);
+
     return (
     <div className="upgrade-overlay" onClick={e=>e.target===e.currentTarget&&setShowUpgrade(false)}>
       <div className="upgrade-modal">
-        <div className="upgrade-modal-badge">Pro Feature</div>
-        <h2>Upgrade to Pro</h2>
-        <p>Unlock unlimited AI fixes, content generation, conversion tracking and more.</p>
+        <div className="upgrade-modal-badge">Upgrade</div>
+        <h2>Unlock RankActions {upgradePlan === "pro" ? "Pro" : "Agency"}</h2>
+        <p>{upgradePlan === "pro" ? "Unlimited AI fixes, content generation, conversion tracking and more." : "Everything in Pro plus unlimited client sites and priority support."}</p>
+
+        {/* Plan toggle */}
+        <div style={{display:"flex",background:"var(--s2)",borderRadius:999,padding:3,gap:3,marginBottom:".75rem"}}>
+          {[["pro","Pro"],["agency","Agency"]].map(([id,label])=>(
+            <button key={id} onClick={()=>setUpgradePlan(id)}
+              style={{flex:1,padding:".45rem",borderRadius:999,border:"none",fontFamily:"var(--font)",fontSize:".82rem",fontWeight:600,cursor:"pointer",background:upgradePlan===id?"var(--blue)":"none",color:upgradePlan===id?"#fff":"var(--text2)",transition:"all .15s"}}>
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* Billing toggle */}
         <div style={{display:"flex",background:"var(--s2)",borderRadius:999,padding:3,gap:3,marginBottom:"1.25rem"}}>
-          {[["monthly","£50/month"],["annual","£500/year"]].map(([b,label])=>(
+          {[["monthly",`${p.monthly}/month`],["annual",`${p.annual}/year`]].map(([b,label])=>(
             <button key={b} onClick={()=>setBilling(b)}
               style={{flex:1,padding:".45rem",borderRadius:999,border:"none",fontFamily:"var(--font)",fontSize:".82rem",fontWeight:600,cursor:"pointer",background:billing===b?"var(--green)":"none",color:billing===b?"#000":"var(--text2)",transition:"all .15s"}}>
               {label}
-              {b==="annual" && <span style={{display:"block",fontSize:".68rem",fontWeight:500,opacity:.8}}>save £100</span>}
+              {b==="annual" && <span style={{display:"block",fontSize:".68rem",fontWeight:500,opacity:.8}}>save {p.save}</span>}
             </button>
           ))}
         </div>
 
         <ul className="upgrade-modal-features">
-          <li>Unlimited websites</li>
-          <li>Unlimited AI fix generator</li>
-          <li>AI content generator — blog posts in 30 seconds</li>
-          <li>Conversions tab — find pages losing leads</li>
-          <li>Issues tab — technical SEO problems</li>
-          <li>Full SEO keyword opportunities</li>
-          <li>Weekly email digest</li>
+          {upgradePlan === "pro" ? (
+            <>
+              <li>Unlimited websites</li>
+              <li>Unlimited AI fix generator</li>
+              <li>AI content generator — blog posts in 30 seconds</li>
+              <li>Conversions tab — find pages losing leads</li>
+              <li>Issues tab — technical SEO problems</li>
+              <li>Link building tools with outreach templates</li>
+              <li>Weekly email digest</li>
+            </>
+          ) : (
+            <>
+              <li>Everything in Pro</li>
+              <li>Unlimited client sites</li>
+              <li>Priority support</li>
+              <li>White-label reports (coming soon)</li>
+              <li>Competitor tracking (coming soon)</li>
+            </>
+          )}
         </ul>
-        <button className="upgrade-modal-cta" onClick={()=>{
-          setPlan("pro");
-          localStorage.setItem("rankactions_plan","pro");
-          setShowUpgrade(false);
-          alert("Stripe payments coming in Phase 2 — plan set to Pro for testing.");
+        <button className="upgrade-modal-cta" disabled={loading} onClick={async ()=>{
+          setLoading(true);
+          await startCheckout(priceId);
+          setLoading(false);
         }}>
-          {billing==="annual" ? "Upgrade to Pro — £500/year" : "Upgrade to Pro — £50/month"}
+          {loading ? "Redirecting to checkout…" : billing==="annual" ? `Upgrade — ${p.annual}/year` : `Upgrade — ${p.monthly}/month`}
         </button>
         {billing==="monthly" && (
           <div style={{fontSize:".75rem",color:"var(--green)",textAlign:"center",margin:".5rem 0",cursor:"pointer"}} onClick={()=>setBilling("annual")}>
-            💡 Switch to annual and save £100/year
+            💡 Switch to annual and save {p.save}/year
           </div>
         )}
+        <div style={{fontSize:".7rem",color:"var(--text3)",textAlign:"center",marginTop:".5rem"}}>Secure payment via Stripe · Cancel any time</div>
         <div className="upgrade-modal-skip" onClick={()=>setShowUpgrade(false)}>Maybe later</div>
       </div>
     </div>
@@ -4013,7 +4124,13 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
           </div>
           <div style={{...rowStyle,borderBottom:"none"}}>
             <div><div style={valStyle}><span className={`plan-pill ${plan==="pro"?"pro":plan==="agency"?"agency":""}`} style={{fontSize:".75rem"}}>{plan==="agency"?"Agency":plan==="pro"?"Pro":"Free"}</span></div><div style={subStyle}>Current plan</div></div>
-            <button style={btnStyle} onClick={()=>{localStorage.removeItem("rankactions_plan_chosen");setShowPlan(true);}}>Change plan</button>
+            <div style={{display:"flex",gap:".5rem"}}>
+              {isPro ? (
+                <button style={btnStyle} onClick={openBillingPortal}>Manage subscription</button>
+              ) : (
+                <button style={{...btnStyle,color:"var(--green)",borderColor:"var(--green)"}} onClick={()=>setShowUpgrade(true)}>Upgrade</button>
+              )}
+            </div>
           </div>
         </div>
 
