@@ -571,6 +571,11 @@ const CSS = `
 .site-picker-search::placeholder{color:var(--text3);}
 .site-picker-search:focus{border-color:var(--blue);}
 
+/* ── Clerk overrides ── */
+.cl-socialButtonsBlockButton{background:#fff!important;color:#333!important;border:1px solid #ddd!important;font-weight:600!important;}
+.cl-socialButtonsBlockButton:hover{background:#f5f5f5!important;}
+.cl-socialButtonsBlockButtonText{color:#333!important;}
+
 /* ── Onboarding Tour ── */
 .tour-overlay{position:fixed;inset:0;z-index:10000;pointer-events:none;}
 .tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10000;transition:opacity .3s;}
@@ -1501,6 +1506,52 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
   const disconnect = () => {
     localStorage.removeItem("rankactions_userId");
     setUserId(null); setIsConnected(false); setSiteData(null); setDataError(null); setAiSummary(null);
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // STRIPE — checkout and billing portal helpers
+  // ─────────────────────────────────────────────────────────────
+  const STRIPE_PRICES = {
+    pro_monthly:    'price_1TOf3kPxXBgdsxBIjlqDg93H',
+    pro_annual:     'price_1TOf5DPxXBgdsxBIhil9CD59',
+    agency_monthly: 'price_1TOf44PxXBgdsxBIMfYph4FF',
+    agency_annual:  'price_1TOf4kPxXBgdsxBIEXUjDAlx',
+  };
+
+  const startCheckout = async (priceId) => {
+    try {
+      const res = await authFetch(`${WORKER_URL}/api/stripe/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          priceId,
+          clerkId: user?.id,
+          email: user?.primaryEmailAddress?.emailAddress,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert("Something went wrong — please try again.");
+      }
+    } catch (err) {
+      console.error("Checkout error:", err);
+      alert("Could not start checkout — please try again.");
+    }
+  };
+
+  const openBillingPortal = async () => {
+    try {
+      const res = await authFetch(`${WORKER_URL}/api/stripe/portal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } catch (err) {
+      console.error("Portal error:", err);
+    }
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -2542,48 +2593,6 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
   // ─────────────────────────────────────────────────────────────
   // UPGRADE MODAL
   // ─────────────────────────────────────────────────────────────
-  const STRIPE_PRICES = {
-    pro_monthly:    'price_1TOf3kPxXBgdsxBIjlqDg93H',
-    pro_annual:     'price_1TOf5DPxXBgdsxBIhil9CD59',
-    agency_monthly: 'price_1TOf44PxXBgdsxBIMfYph4FF',
-    agency_annual:  'price_1TOf4kPxXBgdsxBIEXUjDAlx',
-  };
-
-  const startCheckout = async (priceId) => {
-    try {
-      const res = await authFetch(`${WORKER_URL}/api/stripe/checkout`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          priceId,
-          clerkId: user?.id,
-          email: user?.primaryEmailAddress?.emailAddress,
-        }),
-      });
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        alert("Something went wrong — please try again.");
-      }
-    } catch (err) {
-      console.error("Checkout error:", err);
-      alert("Could not start checkout — please try again.");
-    }
-  };
-
-  const openBillingPortal = async () => {
-    try {
-      const res = await authFetch(`${WORKER_URL}/api/stripe/portal`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
-    } catch (err) {
-      console.error("Portal error:", err);
-    }
-  };
 
   const UpgradeModal = () => {
     const [upgradePlan, setUpgradePlan] = useState("pro");
