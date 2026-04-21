@@ -720,11 +720,17 @@ const CONV_DATA = [
 ];
 
 // ─── AI helper — routes through Worker to avoid CORS ─────────
-// Authenticated fetch helper — includes Clerk session token
+// Authenticated fetch helper — includes Clerk session token + userId fallback
 async function authFetch(url, options = {}) {
   const token = await _getToken();
   const headers = { ...options.headers };
   if (token) headers['Authorization'] = `Bearer ${token}`;
+  // Add userId as fallback query param if available
+  const uid = localStorage.getItem("rankactions_userId");
+  if (uid && !url.includes("userId=")) {
+    const sep = url.includes("?") ? "&" : "?";
+    url = `${url}${sep}userId=${encodeURIComponent(uid)}`;
+  }
   return fetch(url, { ...options, headers });
 }
 
@@ -751,7 +757,17 @@ export default function RankActions() {
   const { signOut, session }           = useClerk();
 
   // Keep the module-level token getter in sync with the current session
-  useEffect(() => { _getToken = () => session?.getToken() ?? Promise.resolve(null); }, [session]);
+  useEffect(() => {
+    _getToken = async () => {
+      try {
+        // Try Clerk session from useClerk
+        if (session?.getToken) return await session.getToken();
+        // Try window.Clerk as fallback
+        if (window.Clerk?.session?.getToken) return await window.Clerk.session.getToken();
+        return null;
+      } catch { return null; }
+    };
+  }, [session]);
 
   // Auth UI state
   const [authView,  setAuthView]  = useState("signin"); // signin | signup
