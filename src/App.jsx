@@ -816,6 +816,7 @@ export default function RankActions() {
   const [linkTemplate,   setLinkTemplate]   = useState("guest_post");
   const [linkTemplateTarget, setLinkTemplateTarget] = useState("");
   const [linkTemplateContext, setLinkTemplateContext] = useState("");
+  const linkTemplateContextRef = useRef("");
   const [linkTemplateOutput,  setLinkTemplateOutput]  = useState("");
   const [linkTemplateLoading, setLinkTemplateLoading] = useState(false);
   const [linkProspects,  setLinkProspects]  = useState(() => {
@@ -3887,12 +3888,12 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
     if (!linkTemplateTarget.trim()) return;
     setLinkTemplateLoading(true);
     const templates = {
-      guest_post: `Write a guest post pitch email from the owner of ${selectedSite} to ${linkTemplateTarget}. Context: ${linkTemplateContext||"general industry expertise"}. The email should be concise (under 150 words), personal, specific about their site, and end with a clear ask. No subject line needed — just the email body.`,
-      resource_page: `Write a resource page outreach email from the owner of ${selectedSite} to ${linkTemplateTarget} asking them to add our site to their resource page. Context: ${linkTemplateContext||"we have helpful content"}. Keep it under 100 words, friendly and specific. Just the email body.`,
-      broken_link: `Write a broken link outreach email from the owner of ${selectedSite} to ${linkTemplateTarget}. We found a broken link on their site and are offering our content as a replacement. Context: ${linkTemplateContext||"similar content topic"}. Under 100 words, helpful tone, not pushy. Just the email body.`,
-      testimonial: `Write a testimonial offer email from the owner of ${selectedSite} to ${linkTemplateTarget}. We use their product/service and want to offer a testimonial in exchange for a link back to our site. Context: ${linkTemplateContext||"happy customer"}. Under 80 words, genuine and warm. Just the email body.`,
-      partnership: `Write a partnership link exchange email from the owner of ${selectedSite} to ${linkTemplateTarget}. We want to explore a mutually beneficial link exchange or co-marketing opportunity. Context: ${linkTemplateContext||"complementary businesses"}. Under 120 words, professional. Just the email body.`,
-      directory: `Write a brief follow-up email from the owner of ${selectedSite} to ${linkTemplateTarget} after submitting to their directory, asking to confirm listing and check any requirements. Context: ${linkTemplateContext||"directory submission"}. Under 60 words, polite and professional. Just the email body.`,
+      guest_post: `Write a guest post pitch email from the owner of ${selectedSite} to ${linkTemplateTarget}. Context: ${linkTemplateContextRef.current||"general industry expertise"}. The email should be concise (under 150 words), personal, specific about their site, and end with a clear ask. No subject line needed — just the email body.`,
+      resource_page: `Write a resource page outreach email from the owner of ${selectedSite} to ${linkTemplateTarget} asking them to add our site to their resource page. Context: ${linkTemplateContextRef.current||"we have helpful content"}. Keep it under 100 words, friendly and specific. Just the email body.`,
+      broken_link: `Write a broken link outreach email from the owner of ${selectedSite} to ${linkTemplateTarget}. We found a broken link on their site and are offering our content as a replacement. Context: ${linkTemplateContextRef.current||"similar content topic"}. Under 100 words, helpful tone, not pushy. Just the email body.`,
+      testimonial: `Write a testimonial offer email from the owner of ${selectedSite} to ${linkTemplateTarget}. We use their product/service and want to offer a testimonial in exchange for a link back to our site. Context: ${linkTemplateContextRef.current||"happy customer"}. Under 80 words, genuine and warm. Just the email body.`,
+      partnership: `Write a partnership link exchange email from the owner of ${selectedSite} to ${linkTemplateTarget}. We want to explore a mutually beneficial link exchange or co-marketing opportunity. Context: ${linkTemplateContextRef.current||"complementary businesses"}. Under 120 words, professional. Just the email body.`,
+      directory: `Write a brief follow-up email from the owner of ${selectedSite} to ${linkTemplateTarget} after submitting to their directory, asking to confirm listing and check any requirements. Context: ${linkTemplateContextRef.current||"directory submission"}. Under 60 words, polite and professional. Just the email body.`,
     };
     try {
       const txt = await callClaude(
@@ -3930,7 +3931,9 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
   // Pillar + Cluster content strategy based on GSC data
   // ─────────────────────────────────────────────────────────────
   const StrategyPlanner = () => {
-    const [view, setView] = useState("suggestions"); // suggestions | planner | tracker
+    const [view, setView] = useState(() => {
+      try { return JSON.parse(localStorage.getItem(`ra_strategy_${selectedSite}`) || "null") ? "planner" : "suggestions"; } catch { return "suggestions"; }
+    });
     const [generating, setGenerating] = useState(false);
     const [suggestions, setSuggestions] = useState(null);
     const [customTopic, setCustomTopic] = useState("");
@@ -4896,7 +4899,7 @@ Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the
               <div className="links-template-field">
                 <div className="links-template-label">Additional context (optional)</div>
                 <input className="links-template-input" placeholder="e.g. we both serve HR professionals"
-                  value={linkTemplateContext} onChange={e=>setLinkTemplateContext(e.target.value)}/>
+                  defaultValue="" onChange={e=>{linkTemplateContextRef.current=e.target.value;}}/>
               </div>
             </div>
             <button className="links-generate-btn" style={{width:"fit-content"}}
