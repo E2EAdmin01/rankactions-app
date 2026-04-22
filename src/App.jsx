@@ -575,6 +575,10 @@ const CSS = `
 .cl-socialButtonsBlockButton{background:#fff!important;color:#333!important;border:1px solid #ddd!important;font-weight:600!important;}
 .cl-socialButtonsBlockButton:hover{background:#f5f5f5!important;}
 .cl-socialButtonsBlockButtonText{color:#333!important;}
+.cl-otpCodeFieldInput,.cl-otpCodeField input{background:var(--s2)!important;border:2px solid var(--border2)!important;color:var(--text)!important;font-size:1.2rem!important;border-radius:8px!important;}
+.cl-otpCodeFieldInput:focus,.cl-otpCodeField input:focus{border-color:var(--blue)!important;box-shadow:0 0 0 2px rgba(77,123,255,.25)!important;}
+.cl-formFieldInput{background:var(--s2)!important;border:1px solid var(--border2)!important;color:var(--text)!important;}
+.cl-formFieldInput:focus{border-color:var(--blue)!important;}
 
 /* ── Onboarding Tour ── */
 .tour-overlay{position:fixed;inset:0;z-index:10000;pointer-events:none;}
@@ -4169,7 +4173,7 @@ Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the
               <div style={{ ...cardStyle, textAlign: "center", padding: "3rem" }}>
                 <div className="spinner" style={{ width: 24, height: 24, margin: "0 auto .75rem" }}/>
                 <div style={{ fontSize: ".85rem", color: "var(--text2)" }}>Analysing your keywords and building strategies...</div>
-                <div style={{ fontSize: ".75rem", color: "var(--text3)", marginTop: ".35rem" }}>This takes about 15 seconds</div>
+                <div style={{ fontSize: ".75rem", color: "var(--text3)", marginTop: ".35rem" }}>This can take up to a minute</div>
               </div>
             )}
 
