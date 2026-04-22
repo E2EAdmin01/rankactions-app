@@ -1551,8 +1551,8 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
   // STRIPE — checkout and billing portal helpers
   // ─────────────────────────────────────────────────────────────
   const STRIPE_PRICES = {
-    starter_monthly: 'price_STARTER_MONTHLY',  // TODO: create in Stripe and update
-    starter_annual:  'price_STARTER_ANNUAL',    // TODO: create in Stripe and update
+    starter_monthly: 'price_1TP6AHPxXBgdsxBI4OWdtv0Z',
+    starter_annual:  'price_1TP6AnPxXBgdsxBI10fIEXuS',
     pro_monthly:     'price_1TOf3kPxXBgdsxBIjlqDg93H',
     pro_annual:      'price_1TOf5DPxXBgdsxBIhil9CD59',
     agency_monthly:  'price_1TOf44PxXBgdsxBIMfYph4FF',
