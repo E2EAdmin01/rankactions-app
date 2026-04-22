@@ -1107,21 +1107,26 @@ export default function RankActions() {
     const labels = ["HIGH IMPACT","OPPORTUNITY","QUICK WIN"];
     const levels = ["high","medium","low"];
     // Filter out completed fixes and show the next best opportunities
-    const available = siteData.topOpportunities.filter((opp, i) => !doneFixes.has(`live-${i}`));
-    // If all are done, pull from deeper in the keyword list
-    const opps = available.length > 0 ? available : siteData.topOpportunities.slice(3, 6);
-    return opps.slice(0,3).map((opp,i) => ({
-      id: available.length > 0 ? `live-${siteData.topOpportunities.indexOf(opp)}` : `live-ext-${i}`,
-      level:levels[i], color:colors[i], label:labels[i], type:"SEO",
-      title:`Improve ranking for "${opp.keyword}"`,
-      desc:`Currently at position #${opp.position}. ${opp.potential}.`,
-      m1:`Position: #${opp.position}`, m2:opp.potential,
-      suggestion:opp.fix,
-      field:"Page Content & Title",
-      current:`Not fully optimised for "${opp.keyword}"`,
-      recommended:opp.fix,
-      metaDesc:null,
-    }));
+    const allOpps = siteData.topOpportunities || [];
+    const available = allOpps.filter((_opp, i) => !doneFixes.has(`live-${i}`));
+    // If all top ones are done, pull from deeper in the list
+    const opps = available.length > 0 ? available : allOpps.slice(3, 6);
+    if (opps.length === 0) return DEMO_FIXES;
+    return opps.slice(0,3).map((opp,i) => {
+      const origIdx = allOpps.indexOf(opp);
+      return {
+        id: origIdx >= 0 ? `live-${origIdx}` : `live-ext-${i}`,
+        level:levels[Math.min(i, 2)], color:colors[Math.min(i, 2)], label:labels[Math.min(i, 2)], type:"SEO",
+        title:`Improve ranking for "${opp.keyword}"`,
+        desc:`Currently at position #${opp.position}. ${opp.potential}.`,
+        m1:`Position: #${opp.position}`, m2:opp.potential,
+        suggestion:opp.fix,
+        field:"Page Content & Title",
+        current:`Not fully optimised for "${opp.keyword}"`,
+        recommended:opp.fix,
+        metaDesc:null,
+      };
+    });
   };
 
   const getSeoRows = () => {
@@ -1553,7 +1558,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
   const STRIPE_PRICES = {
     starter_monthly: 'price_1TP6AHPxXBgdsxBI4OWdtv0Z',
     starter_annual:  'price_1TP6AnPxXBgdsxBI10fIEXuS',
-    pro_monthly:     'price_1TOf3kPxXBgdsxBIjlqDg93H',
+    pro_monthly:     'price_1TP6R4PxXBgdsxBIeBQGpjYk',
     pro_annual:      'price_1TOf5DPxXBgdsxBIhil9CD59',
     agency_monthly:  'price_1TOf44PxXBgdsxBIMfYph4FF',
     agency_annual:   'price_1TOf4kPxXBgdsxBIEXUjDAlx',
