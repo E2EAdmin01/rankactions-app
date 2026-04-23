@@ -5457,10 +5457,12 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                 <text x={60} y={52} textAnchor="middle" fill={scoreColor(auditData.score)} fontSize={28} fontWeight={800} fontFamily="Arial">{auditData.score}</text>
                 <text x={60} y={72} textAnchor="middle" fill="var(--text3)" fontSize={11}>SEO · {auditData.grade}</text>
               </svg>
+              <div style={{fontSize:".68rem",color:"var(--text3)",marginTop:".15rem"}}>On-page SEO health</div>
             </div>
             {/* Performance Score */}
             <div style={{textAlign:"center"}}>
               {perfData ? (
+                <>
                 <svg viewBox="0 0 120 120" style={{width:115,height:115}}>
                   <circle cx="60" cy="60" r="52" fill="none" stroke="var(--border)" strokeWidth="8"/>
                   <circle cx="60" cy="60" r="52" fill="none" stroke={scoreColor(perfData.score)} strokeWidth="8"
@@ -5469,17 +5471,25 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                   <text x="60" y="52" textAnchor="middle" fill={scoreColor(perfData.score)} fontSize="28" fontWeight="800" fontFamily="Arial">{perfData.score}</text>
                   <text x="60" y="72" textAnchor="middle" fill="var(--text3)" fontSize="11">Performance</text>
                 </svg>
+                <div style={{fontSize:".68rem",color:"var(--text3)",marginTop:".15rem"}}>Page loading speed</div>
+                </>
               ) : perfLoading ? (
-                <div style={{width:115,height:115,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRadius:"50%",border:"8px solid var(--border)"}}>
-                  <div className="spinner-sm"/>
-                  <div style={{fontSize:".55rem",color:"var(--text3)",marginTop:".25rem"}}>Loading...</div>
+                <div>
+                  <div style={{width:115,height:115,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRadius:"50%",border:"8px solid var(--border)"}}>
+                    <div className="spinner-sm"/>
+                    <div style={{fontSize:".55rem",color:"var(--text3)",marginTop:".25rem"}}>Loading...</div>
+                  </div>
+                  <div style={{fontSize:".68rem",color:"var(--text3)",marginTop:".15rem"}}>Page loading speed</div>
                 </div>
               ) : (
+                <div>
                 <svg viewBox="0 0 120 120" style={{width:115,height:115}}>
                   <circle cx="60" cy="60" r="52" fill="none" stroke="var(--border)" strokeWidth="8"/>
                   <text x="60" y="55" textAnchor="middle" fill="var(--text3)" fontSize="16">—</text>
                   <text x="60" y="72" textAnchor="middle" fill="var(--text3)" fontSize="11">Performance</text>
                 </svg>
+                <div style={{fontSize:".68rem",color:"var(--text3)",marginTop:".15rem"}}>Page loading speed</div>
+                </div>
               )}
             </div>
             {/* Summary counts */}
@@ -5517,9 +5527,34 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
               <div key={m.l} style={{background:"var(--s1)",borderRadius:8,padding:".6rem .75rem",border:"1px solid var(--border)",textAlign:"center"}}>
                 <div style={{fontSize:".68rem",color:"var(--text3)",fontWeight:600,marginBottom:".2rem"}}>{m.l}</div>
                 <div style={{fontSize:"1.05rem",fontWeight:700,fontFamily:"var(--mono)",color:m.v==="—"||m.v==="..."?"var(--text3)":m.ok?"var(--green)":m.warn?"var(--amber)":"var(--red)"}}>{m.v}</div>
+                {m.v!=="—"&&m.v!=="..."&&<div style={{fontSize:".58rem",fontWeight:600,marginTop:".15rem",color:m.ok?"var(--green)":m.warn?"var(--amber)":"var(--red)"}}>{m.ok?"Good":m.warn?"Needs work":"Poor"}</div>}
               </div>
             ))}
           </div>
+
+          {/* ── What do these scores mean? ── */}
+          <details style={{marginBottom:"1.25rem",background:"var(--s1)",borderRadius:10,border:"1px solid var(--border)",overflow:"hidden"}}>
+            <summary style={{padding:".75rem 1rem",cursor:"pointer",fontSize:".82rem",fontWeight:600,color:"var(--blue)",listStyle:"none",display:"flex",alignItems:"center",gap:".4rem"}}>
+              <span style={{fontSize:".7rem"}}>ℹ</span> What do these scores mean?
+            </summary>
+            <div style={{padding:"0 1rem 1rem",fontSize:".8rem",color:"var(--text2)",lineHeight:1.7}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"1rem",marginTop:".5rem"}}>
+                <div>
+                  <div style={{fontWeight:700,color:"var(--text)",marginBottom:".3rem"}}>SEO Score (0-100)</div>
+                  <p>How well your page is set up for search engines. Checks things like your page title, description, headings, images, and links. Aim for 80+.</p>
+                  <div style={{fontWeight:700,color:"var(--text)",margin:".6rem 0 .3rem"}}>Performance Score (0-100)</div>
+                  <p>How fast your page loads on a mobile phone (from Google). Under 50 is slow, 50-89 needs improvement, 90+ is fast.</p>
+                </div>
+                <div>
+                  <div style={{fontWeight:700,color:"var(--text)",marginBottom:".3rem"}}>Core Web Vitals</div>
+                  <p><strong style={{color:"var(--text)"}}>LCP</strong> — How long until the main content appears. Under 2.5 seconds is good.</p>
+                  <p><strong style={{color:"var(--text)"}}>CLS</strong> — How much the page jumps around while loading. Under 0.1 means things stay put.</p>
+                  <p><strong style={{color:"var(--text)"}}>FCP</strong> — How long until anything appears on screen. Under 1.8 seconds is good.</p>
+                  <p style={{marginTop:".4rem"}}><span style={{color:"var(--green)"}}>Green</span> = good, <span style={{color:"var(--amber)"}}>amber</span> = needs work, <span style={{color:"var(--red)"}}>red</span> = poor. Google uses these to rank your site.</p>
+                </div>
+              </div>
+            </div>
+          </details>
 
           {/* ── SEO Issues ── */}
           <div style={{display:"flex",flexDirection:"column",gap:".5rem"}}>
