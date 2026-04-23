@@ -503,7 +503,7 @@ const CSS = `
 
 /* ── Link Building ── */
 .links-wrap{padding:2rem;display:flex;flex-direction:column;gap:2rem;}
-.links-section{background:var(--s1);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.links-section{background:var(--s1);border:1px solid var(--border);border-radius:14px;}
 .links-section-head{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;}
 .links-section-title{font-size:.95rem;font-weight:700;}
 .links-section-sub{font-size:.78rem;color:var(--text2);margin-top:.15rem;}
