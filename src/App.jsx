@@ -922,6 +922,8 @@ export default function RankActions() {
   const [auditUrl, setAuditUrl] = useState("");
   const [auditData, setAuditData] = useState(null);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [perfData, setPerfData] = useState(null);
+  const [perfLoading, setPerfLoading] = useState(false);
   const [aiFixCount,   setAiFixCount]   = useState(() => {
     const stored = JSON.parse(localStorage.getItem("rankactions_ai_fix_usage") || '{"count":0,"month":""}');
     const thisMonth = new Date().toISOString().slice(0,7);
@@ -5363,8 +5365,6 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
   // ─────────────────────────────────────────────────────────────
   const PageAudit = () => {
     const [url, setUrl] = useState(auditUrl || (selectedSite.startsWith("sc-domain:")?`https://${selectedSite.replace("sc-domain:","")}`:selectedSite.startsWith("http")?selectedSite:`https://${selectedSite}`));
-    const [perfData, setPerfData] = useState(null);
-    const [perfLoading, setPerfLoading] = useState(false);
 
     const runAudit = async () => {
       if (!url.trim()) return;
