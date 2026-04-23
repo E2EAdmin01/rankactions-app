@@ -3384,6 +3384,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
       const matchFilter = filter==="all"
         || (filter==="agency"  && u.plan==="agency")
         || (filter==="pro"     && u.plan==="pro")
+        || (filter==="starter" && u.plan==="starter")
         || (filter==="free"    && (!u.plan||u.plan==="free"))
         || (filter==="disabled"&& u.disabled);
       return matchSearch && matchFilter;
@@ -3391,8 +3392,9 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
 
     const stats = {
       total:    users.length,
-      pro:      users.filter(u=>u.plan==="pro").length,
       agency:   users.filter(u=>u.plan==="agency").length,
+      pro:      users.filter(u=>u.plan==="pro").length,
+      starter:  users.filter(u=>u.plan==="starter").length,
       free:     users.filter(u=>!u.plan||u.plan==="free").length,
       disabled: users.filter(u=>u.disabled).length,
     };
@@ -3426,7 +3428,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
 
         {/* Stats */}
         <div className="admin-stats">
-          {[["Total users",stats.total,"var(--text)"],["Pro",stats.pro,"var(--green)"],["Agency",stats.agency,"#a855f7"],["Free",stats.free,"var(--blue)"],["Disabled",stats.disabled,"var(--red)"]].map(([l,v,c])=>(
+          {[["Total users",stats.total,"var(--text)"],["Agency",stats.agency,"#a855f7"],["Pro",stats.pro,"var(--green)"],["Starter",stats.starter,"var(--blue)"],["Free",stats.free,"var(--text3)"],["Disabled",stats.disabled,"var(--red)"]].map(([l,v,c])=>(
             <div key={l} className="admin-stat">
               <div className="admin-stat-label">{l}</div>
               <div className="admin-stat-value" style={{color:c}}>{v}</div>
@@ -3442,6 +3444,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
             <option value="all">All users</option>
             <option value="agency">Agency only</option>
             <option value="pro">Pro only</option>
+            <option value="starter">Starter only</option>
             <option value="free">Free only</option>
             <option value="disabled">Disabled</option>
           </select>
@@ -3474,7 +3477,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
                       <div style={{fontWeight:600}}>{u.name || "—"}</div>
                       <div style={{fontSize:".75rem",color:"var(--text2)"}}>{u.email}</div>
                     </td>
-                    <td><span className={`plan-badge ${u.plan==="agency"?"agency":u.plan==="pro"?"pro":"free"}`}>{u.plan||"free"}</span></td>
+                    <td><span className={`plan-badge ${u.plan==="agency"?"agency":u.plan==="pro"?"pro":u.plan==="starter"?"starter":"free"}`}>{u.plan||"free"}</span></td>
                     <td style={{fontFamily:"var(--mono)",fontSize:".8rem"}}>{(u.sites||[]).length}</td>
                     <td style={{fontFamily:"var(--mono)",fontSize:".8rem"}}>{u.aiFixCount||0}</td>
                     <td style={{fontSize:".8rem",color:"var(--text2)"}}>{fmt(u.signedUpAt)}</td>
@@ -3522,7 +3525,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
                 <div style={{display:"flex",flexDirection:"column",gap:".5rem"}}>
                   <div className="drawer-field">
                     <div className="drawer-field-label">Current plan</div>
-                    <div className="drawer-field-value"><span className={`plan-badge ${selected.plan==="pro"?"pro":"free"}`}>{selected.plan||"free"}</span></div>
+                    <div className="drawer-field-value"><span className={`plan-badge ${selected.plan==="agency"?"agency":selected.plan==="pro"?"pro":selected.plan==="starter"?"starter":"free"}`}>{selected.plan||"free"}</span></div>
                   </div>
                   <div className="drawer-field">
                     <div className="drawer-field-label">AI fixes used this month</div>
@@ -3551,6 +3554,11 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
                 {selected.plan!=="pro" && (
                   <button className="drawer-btn upgrade" disabled={saving} onClick={()=>updateUser(selected.userId,{plan:"pro"})}>
                     {selected.plan==="agency" ? "↓ Downgrade to Pro" : "↑ Upgrade to Pro"}
+                  </button>
+                )}
+                {selected.plan!=="starter" && (
+                  <button className="drawer-btn upgrade" style={{background:"var(--blue)"}} disabled={saving} onClick={()=>updateUser(selected.userId,{plan:"starter"})}>
+                    {selected.plan==="pro"||selected.plan==="agency" ? "↓ Downgrade to Starter" : "↑ Upgrade to Starter"}
                   </button>
                 )}
                 {selected.plan!=="free" && (
