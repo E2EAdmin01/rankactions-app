@@ -5446,39 +5446,81 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
         {auditLoading && <div style={{textAlign:"center",padding:"3rem",color:"var(--text3)"}}><div className="spinner-sm" style={{margin:"0 auto .75rem"}}/>Scanning SEO and performance — this may take 10-15 seconds...</div>}
         {auditData?.error && <div style={{padding:"1rem",background:"rgba(240,62,95,.08)",border:"1px solid rgba(240,62,95,.2)",borderRadius:10,color:"#f03e5f",fontSize:".85rem"}}>Could not audit: {auditData.error}</div>}
         {auditData?.audited && <>
-          <div style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:"1.5rem",marginBottom:"1.5rem",alignItems:"center"}}>
+          {/* ── Dual score gauges + summary ── */}
+          <div style={{display:"grid",gridTemplateColumns:"auto auto 1fr",gap:"1.25rem",marginBottom:"1.25rem",alignItems:"center"}}>
+            {/* SEO Score */}
             <div style={{textAlign:"center"}}>
-              <svg viewBox="0 0 120 120" style={{width:130,height:130}}>
+              <svg viewBox="0 0 120 120" style={{width:115,height:115}}>
                 <circle cx={60} cy={60} r={52} fill="none" stroke="var(--border)" strokeWidth={8}/>
                 <circle cx={60} cy={60} r={52} fill="none" stroke={scoreColor(auditData.score)} strokeWidth={8}
                   strokeDasharray={`${(auditData.score/100)*327} 327`} strokeLinecap="round" transform="rotate(-90 60 60)"/>
-                <text x={60} y={55} textAnchor="middle" fill={scoreColor(auditData.score)} fontSize={32} fontWeight={800} fontFamily="Arial">{auditData.score}</text>
-                <text x={60} y={75} textAnchor="middle" fill="var(--text3)" fontSize={14}>Grade {auditData.grade}</text>
+                <text x={60} y={52} textAnchor="middle" fill={scoreColor(auditData.score)} fontSize={28} fontWeight={800} fontFamily="Arial">{auditData.score}</text>
+                <text x={60} y={72} textAnchor="middle" fill="var(--text3)" fontSize={11}>SEO · {auditData.grade}</text>
               </svg>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".65rem"}}>
-              <div style={{background:"rgba(240,62,95,.06)",borderRadius:10,padding:".85rem",textAlign:"center",border:"1px solid rgba(240,62,95,.15)"}}>
-                <div style={{fontSize:"1.4rem",fontWeight:800,color:"#f03e5f"}}>{auditData.summary.critical}</div>
-                <div style={{fontSize:".72rem",color:"var(--text3)"}}>Critical</div>
+            {/* Performance Score */}
+            <div style={{textAlign:"center"}}>
+              {perfData ? (
+                <svg viewBox="0 0 120 120" style={{width:115,height:115}}>
+                  <circle cx="60" cy="60" r="52" fill="none" stroke="var(--border)" strokeWidth="8"/>
+                  <circle cx="60" cy="60" r="52" fill="none" stroke={scoreColor(perfData.score)} strokeWidth="8"
+                    strokeDasharray={`${(perfData.score/100)*327} 327`}
+                    strokeLinecap="round" transform="rotate(-90 60 60)"/>
+                  <text x="60" y="52" textAnchor="middle" fill={scoreColor(perfData.score)} fontSize="28" fontWeight="800" fontFamily="Arial">{perfData.score}</text>
+                  <text x="60" y="72" textAnchor="middle" fill="var(--text3)" fontSize="11">Performance</text>
+                </svg>
+              ) : perfLoading ? (
+                <div style={{width:115,height:115,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",border:"8px solid var(--border)"}}>
+                  <div className="spinner-sm"/>
+                </div>
+              ) : (
+                <svg viewBox="0 0 120 120" style={{width:115,height:115}}>
+                  <circle cx="60" cy="60" r="52" fill="none" stroke="var(--border)" strokeWidth="8"/>
+                  <text x="60" y="55" textAnchor="middle" fill="var(--text3)" fontSize="16">—</text>
+                  <text x="60" y="72" textAnchor="middle" fill="var(--text3)" fontSize="11">Performance</text>
+                </svg>
+              )}
+            </div>
+            {/* Summary counts */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".5rem"}}>
+              <div style={{background:"rgba(240,62,95,.06)",borderRadius:10,padding:".75rem",textAlign:"center",border:"1px solid rgba(240,62,95,.15)"}}>
+                <div style={{fontSize:"1.3rem",fontWeight:800,color:"#f03e5f"}}>{auditData.summary.critical}</div>
+                <div style={{fontSize:".7rem",color:"var(--text3)"}}>Critical</div>
               </div>
-              <div style={{background:"rgba(245,166,35,.06)",borderRadius:10,padding:".85rem",textAlign:"center",border:"1px solid rgba(245,166,35,.15)"}}>
-                <div style={{fontSize:"1.4rem",fontWeight:800,color:"#f5a623"}}>{auditData.summary.warnings}</div>
-                <div style={{fontSize:".72rem",color:"var(--text3)"}}>Warnings</div>
+              <div style={{background:"rgba(245,166,35,.06)",borderRadius:10,padding:".75rem",textAlign:"center",border:"1px solid rgba(245,166,35,.15)"}}>
+                <div style={{fontSize:"1.3rem",fontWeight:800,color:"#f5a623"}}>{auditData.summary.warnings}</div>
+                <div style={{fontSize:".7rem",color:"var(--text3)"}}>Warnings</div>
               </div>
-              <div style={{background:"rgba(15,219,138,.06)",borderRadius:10,padding:".85rem",textAlign:"center",border:"1px solid rgba(15,219,138,.15)"}}>
-                <div style={{fontSize:"1.4rem",fontWeight:800,color:"#0fdb8a"}}>{auditData.summary.passed}</div>
-                <div style={{fontSize:".72rem",color:"var(--text3)"}}>Passed</div>
+              <div style={{background:"rgba(15,219,138,.06)",borderRadius:10,padding:".75rem",textAlign:"center",border:"1px solid rgba(15,219,138,.15)"}}>
+                <div style={{fontSize:"1.3rem",fontWeight:800,color:"#0fdb8a"}}>{auditData.summary.passed}</div>
+                <div style={{fontSize:".7rem",color:"var(--text3)"}}>Passed</div>
               </div>
             </div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".6rem",marginBottom:"1.25rem"}}>
-            {[{l:"Load time",v:`${auditData.loadTime}ms`,ok:auditData.loadTime<3000},{l:"Word count",v:`~${auditData.wordCount}`,ok:auditData.wordCount>=300}].map(m=>(
-              <div key={m.l} style={{background:"var(--s1)",borderRadius:8,padding:".5rem .85rem",border:"1px solid var(--border)",display:"flex",justifyContent:"space-between"}}>
-                <span style={{fontSize:".75rem",color:"var(--text3)"}}>{m.l}</span>
-                <span style={{fontSize:".8rem",fontWeight:600,color:m.ok?"var(--green)":"#f5a623"}}>{m.v}</span>
+
+          {/* ── Metrics strip: CWV + load time + word count ── */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:".5rem",marginBottom:"1.25rem"}}>
+            {[
+              ...(perfData ? [
+                {l:"LCP",v:perfData.cwv.lcp!=null?`${(perfData.cwv.lcp/1000).toFixed(1)}s`:"—",ok:perfData.cwv.lcp<=2500,warn:perfData.cwv.lcp<=4000},
+                {l:"CLS",v:perfData.cwv.cls!=null?perfData.cwv.cls.toFixed(3):"—",ok:perfData.cwv.cls<=0.1,warn:perfData.cwv.cls<=0.25},
+                {l:"FCP",v:perfData.cwv.fcp!=null?`${(perfData.cwv.fcp/1000).toFixed(1)}s`:"—",ok:perfData.cwv.fcp<=1800,warn:perfData.cwv.fcp<=3000},
+              ] : [
+                {l:"LCP",v:perfLoading?"...":"—",ok:true,warn:true},
+                {l:"CLS",v:perfLoading?"...":"—",ok:true,warn:true},
+                {l:"FCP",v:perfLoading?"...":"—",ok:true,warn:true},
+              ]),
+              {l:"Load time",v:`${auditData.loadTime}ms`,ok:auditData.loadTime<2000,warn:auditData.loadTime<4000},
+              {l:"Word count",v:`~${auditData.wordCount}`,ok:auditData.wordCount>=300,warn:auditData.wordCount>=150},
+            ].map(m=>(
+              <div key={m.l} style={{background:"var(--s1)",borderRadius:8,padding:".5rem .65rem",border:"1px solid var(--border)",textAlign:"center"}}>
+                <div style={{fontSize:".6rem",color:"var(--text3)",fontWeight:600,marginBottom:".15rem"}}>{m.l}</div>
+                <div style={{fontSize:".95rem",fontWeight:700,fontFamily:"var(--mono)",color:m.v==="—"||m.v==="..."?"var(--text3)":m.ok?"var(--green)":m.warn?"var(--amber)":"var(--red)"}}>{m.v}</div>
               </div>
             ))}
           </div>
+
+          {/* ── SEO Issues ── */}
           <div style={{display:"flex",flexDirection:"column",gap:".5rem"}}>
             {auditData.issues.filter(i=>i.type!=="pass").map((issue,i)=>(
               <div key={i} style={{background:"var(--s1)",borderRadius:10,border:"1px solid var(--border)",padding:".85rem 1rem",borderLeft:`3px solid ${typeColor(issue.type)}`}}>
@@ -5500,40 +5542,12 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
             </div>
           </div>
 
-          {/* ── Performance (PageSpeed Insights) ── */}
-          {perfData && (
+          {/* ── Performance Opportunities + Diagnostics ── */}
+          {perfData && (perfData.opportunities?.length > 0 || perfData.diagnostics?.length > 0) && (
             <div style={{marginTop:"1.5rem"}}>
-              <div style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:"1.5rem",alignItems:"center",marginBottom:"1rem"}}>
-                <div style={{textAlign:"center"}}>
-                  <svg viewBox="0 0 120 120" style={{width:110,height:110}}>
-                    <circle cx="60" cy="60" r="54" fill="none" stroke="var(--s2)" strokeWidth="8"/>
-                    <circle cx="60" cy="60" r="54" fill="none" stroke={scoreColor(perfData.score)} strokeWidth="8"
-                      strokeDasharray={`${(perfData.score/100)*339.3} 339.3`}
-                      strokeLinecap="round" transform="rotate(-90 60 60)"/>
-                    <text x="60" y="55" textAnchor="middle" fill={scoreColor(perfData.score)} fontSize="28" fontWeight="800" fontFamily="var(--mono)">{perfData.score}</text>
-                    <text x="60" y="75" textAnchor="middle" fill="var(--text3)" fontSize="10" fontWeight="700">PERFORMANCE</text>
-                  </svg>
-                </div>
-                <div>
-                  <div style={{fontSize:".95rem",fontWeight:700,marginBottom:".5rem"}}><Tip term="pageSpeed">Core Web Vitals</Tip></div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".5rem"}}>
-                    {[
-                      {label:"LCP",tip:"Largest Contentful Paint — how long until the main content loads. Under 2.5s is good.",val:perfData.cwv.lcp,fmt:v=>`${(v/1000).toFixed(1)}s`,good:2500,ok:4000},
-                      {label:"CLS",tip:"Cumulative Layout Shift — how much the page moves while loading. Under 0.1 is good.",val:perfData.cwv.cls,fmt:v=>v?.toFixed(3),good:0.1,ok:0.25},
-                      {label:"FCP",tip:"First Contentful Paint — how long until something appears on screen. Under 1.8s is good.",val:perfData.cwv.fcp,fmt:v=>`${(v/1000).toFixed(1)}s`,good:1800,ok:3000},
-                    ].map((m,i)=>(
-                      <div key={i} style={{background:"var(--s1)",borderRadius:8,padding:".6rem .75rem",border:"1px solid var(--border)"}}>
-                        <div style={{fontSize:".65rem",color:"var(--text3)",fontWeight:600,marginBottom:".2rem"}} title={m.tip}>{m.label}</div>
-                        <div style={{fontSize:"1.1rem",fontWeight:700,fontFamily:"var(--mono)",color:m.val==null?"var(--text3)":m.val<=m.good?"var(--green)":m.val<=m.ok?"var(--amber)":"var(--red)"}}>{m.val!=null?m.fmt(m.val):"—"}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
               {perfData.opportunities?.length > 0 && (
                 <div style={{marginBottom:".75rem"}}>
-                  <div style={{fontSize:".78rem",fontWeight:700,color:"var(--text3)",marginBottom:".5rem",textTransform:"uppercase",letterSpacing:".06em"}}>Opportunities</div>
+                  <div style={{fontSize:".78rem",fontWeight:700,color:"var(--text3)",marginBottom:".5rem",textTransform:"uppercase",letterSpacing:".06em"}}>Performance Opportunities</div>
                   {perfData.opportunities.map((opp,i)=>(
                     <div key={i} style={{background:"var(--s1)",borderRadius:8,padding:".65rem .85rem",border:"1px solid var(--border)",borderLeft:`3px solid ${opp.score<=0.5?"var(--red)":"var(--amber)"}`,marginBottom:".4rem"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -5548,7 +5562,6 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                   ))}
                 </div>
               )}
-
               {perfData.diagnostics?.length > 0 && (
                 <div>
                   <div style={{fontSize:".78rem",fontWeight:700,color:"var(--text3)",marginBottom:".5rem",textTransform:"uppercase",letterSpacing:".06em"}}>Diagnostics</div>
@@ -5564,15 +5577,9 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           )}
 
           {perfLoading && !perfData && (
-            <div style={{marginTop:"1rem",padding:"1.5rem",textAlign:"center",background:"var(--s1)",borderRadius:10,border:"1px solid var(--border)"}}>
+            <div style={{marginTop:"1rem",padding:"1rem",textAlign:"center",background:"var(--s1)",borderRadius:10,border:"1px solid var(--border)"}}>
               <div className="spinner-sm" style={{margin:"0 auto .5rem"}}/>
-              <div style={{fontSize:".82rem",color:"var(--text3)"}}>Loading performance data from Google PageSpeed Insights...</div>
-            </div>
-          )}
-
-          {!perfLoading && !perfData && auditData?.audited && (
-            <div style={{marginTop:"1rem",padding:".75rem 1rem",background:"var(--s1)",borderRadius:8,border:"1px solid var(--border)",fontSize:".78rem",color:"var(--text3)"}}>
-              ⏳ PageSpeed Insights data was unavailable for this page. This can happen with very slow pages or pages that block Google's crawler.
+              <div style={{fontSize:".82rem",color:"var(--text3)"}}>Loading performance opportunities from Google...</div>
             </div>
           )}
 
