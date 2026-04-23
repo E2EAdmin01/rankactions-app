@@ -1079,7 +1079,7 @@ export default function RankActions() {
         email: user?.primaryEmailAddress?.emailAddress || "",
       })
     }).catch(()=>{});
-  }, [plan, sites, aiFixCount]);
+  }, [plan, sites, aiFixCount, user?.id]);
 
   // ── Fetch data when userId or site changes ──────────────────
   useEffect(() => {
