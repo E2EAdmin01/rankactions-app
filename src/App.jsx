@@ -5775,7 +5775,7 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
             {templateTypes.map(t=>(
               <div key={t.id} className={`links-template-tab ${linkTemplate===t.id?"active":""}`}
                 onClick={()=>{setLinkTemplate(t.id);setLinkTemplateOutput("");}}>
-                {t.tip ? <Tip term={t.tip}>{t.label}</Tip> : t.label}
+                {t.label}
               </div>
             ))}
           </div>
