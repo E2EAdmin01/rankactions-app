@@ -5363,14 +5363,58 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
   // ─────────────────────────────────────────────────────────────
   const PageAudit = () => {
     const [url, setUrl] = useState(auditUrl || (selectedSite.startsWith("sc-domain:")?`https://${selectedSite.replace("sc-domain:","")}`:selectedSite.startsWith("http")?selectedSite:`https://${selectedSite}`));
+    const [perfData, setPerfData] = useState(null);
+    const [perfLoading, setPerfLoading] = useState(false);
+
     const runAudit = async () => {
       if (!url.trim()) return;
+      const target = url.trim().startsWith("http") ? url.trim() : `https://${url.trim()}`;
       setAuditLoading(true); setAuditData(null); setAuditUrl(url);
-      try {
-        const res = await authFetch(`${WORKER_URL}/api/page-audit`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({url:url.trim()}) });
-        setAuditData(await res.json());
-      } catch(e) { setAuditData({error:e.message,audited:false}); }
+      setPerfData(null); setPerfLoading(true);
+
+      // Run SEO audit (Worker) and PageSpeed (browser, direct to Google) in parallel
+      const seoPromise = authFetch(`${WORKER_URL}/api/page-audit`, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({url:target}) })
+        .then(r=>r.json()).catch(e=>({error:e.message,audited:false}));
+
+      const psiPromise = fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=${encodeURIComponent(target)}&category=PERFORMANCE&strategy=MOBILE`)
+        .then(r=>r.json()).then(psi => {
+          if (!psi?.lighthouseResult) return null;
+          const lhr = psi.lighthouseResult;
+          const audits = lhr.audits || {};
+          return {
+            score: lhr.categories?.performance ? Math.round(lhr.categories.performance.score * 100) : null,
+            cwv: {
+              lcp: audits['largest-contentful-paint']?.numericValue,
+              cls: audits['cumulative-layout-shift']?.numericValue,
+              fcp: audits['first-contentful-paint']?.numericValue,
+              si:  audits['speed-index']?.numericValue,
+              tbt: audits['total-blocking-time']?.numericValue,
+            },
+            opportunities: Object.values(audits)
+              .filter(a => a.details?.type === 'opportunity' && a.details?.overallSavingsMs > 100)
+              .sort((a,b) => (b.details?.overallSavingsMs||0) - (a.details?.overallSavingsMs||0))
+              .slice(0, 8)
+              .map(a => ({
+                title: a.title, description: a.description,
+                savings: a.details?.overallSavingsMs ? `${(a.details.overallSavingsMs/1000).toFixed(1)}s` : null,
+                savingsBytes: a.details?.overallSavingsBytes ? `${(a.details.overallSavingsBytes/1024).toFixed(0)}KB` : null,
+                score: a.score,
+              })),
+            diagnostics: Object.values(audits)
+              .filter(a => a.details?.type === 'table' && a.score !== null && a.score < 0.9 && !a.details?.overallSavingsMs)
+              .slice(0, 5)
+              .map(a => ({ title: a.title, description: a.description, score: a.score })),
+          };
+        }).catch(() => null);
+
+      // SEO finishes first (2-3s), then PSI catches up (10-20s)
+      const seoResult = await seoPromise;
+      setAuditData(seoResult);
       setAuditLoading(false);
+
+      const psiResult = await psiPromise;
+      setPerfData(psiResult);
+      setPerfLoading(false);
     };
     const scoreColor = (s) => s>=90?"#0A7C4E":s>=75?"#0fdb8a":s>=60?"#f5a623":s>=40?"#e67e22":"#f03e5f";
     const typeIcon = (t) => t==="critical"?"🔴":t==="warning"?"🟡":t==="info"?"🔵":"🟢";
@@ -5450,16 +5494,16 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           </div>
 
           {/* ── Performance (PageSpeed Insights) ── */}
-          {auditData.performance && (
+          {perfData && (
             <div style={{marginTop:"1.5rem"}}>
               <div style={{display:"grid",gridTemplateColumns:"140px 1fr",gap:"1.5rem",alignItems:"center",marginBottom:"1rem"}}>
                 <div style={{textAlign:"center"}}>
                   <svg viewBox="0 0 120 120" style={{width:110,height:110}}>
                     <circle cx="60" cy="60" r="54" fill="none" stroke="var(--s2)" strokeWidth="8"/>
-                    <circle cx="60" cy="60" r="54" fill="none" stroke={scoreColor(auditData.performance.score)} strokeWidth="8"
-                      strokeDasharray={`${(auditData.performance.score/100)*339.3} 339.3`}
+                    <circle cx="60" cy="60" r="54" fill="none" stroke={scoreColor(perfData.score)} strokeWidth="8"
+                      strokeDasharray={`${(perfData.score/100)*339.3} 339.3`}
                       strokeLinecap="round" transform="rotate(-90 60 60)"/>
-                    <text x="60" y="55" textAnchor="middle" fill={scoreColor(auditData.performance.score)} fontSize="28" fontWeight="800" fontFamily="var(--mono)">{auditData.performance.score}</text>
+                    <text x="60" y="55" textAnchor="middle" fill={scoreColor(perfData.score)} fontSize="28" fontWeight="800" fontFamily="var(--mono)">{perfData.score}</text>
                     <text x="60" y="75" textAnchor="middle" fill="var(--text3)" fontSize="10" fontWeight="700">PERFORMANCE</text>
                   </svg>
                 </div>
@@ -5467,9 +5511,9 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                   <div style={{fontSize:".95rem",fontWeight:700,marginBottom:".5rem"}}><Tip term="pageSpeed">Core Web Vitals</Tip></div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:".5rem"}}>
                     {[
-                      {label:"LCP",tip:"Largest Contentful Paint — how long until the main content loads. Under 2.5s is good.",val:auditData.performance.cwv.lcp,fmt:v=>`${(v/1000).toFixed(1)}s`,good:2500,ok:4000},
-                      {label:"CLS",tip:"Cumulative Layout Shift — how much the page moves while loading. Under 0.1 is good.",val:auditData.performance.cwv.cls,fmt:v=>v?.toFixed(3),good:0.1,ok:0.25},
-                      {label:"FCP",tip:"First Contentful Paint — how long until something appears on screen. Under 1.8s is good.",val:auditData.performance.cwv.fcp,fmt:v=>`${(v/1000).toFixed(1)}s`,good:1800,ok:3000},
+                      {label:"LCP",tip:"Largest Contentful Paint — how long until the main content loads. Under 2.5s is good.",val:perfData.cwv.lcp,fmt:v=>`${(v/1000).toFixed(1)}s`,good:2500,ok:4000},
+                      {label:"CLS",tip:"Cumulative Layout Shift — how much the page moves while loading. Under 0.1 is good.",val:perfData.cwv.cls,fmt:v=>v?.toFixed(3),good:0.1,ok:0.25},
+                      {label:"FCP",tip:"First Contentful Paint — how long until something appears on screen. Under 1.8s is good.",val:perfData.cwv.fcp,fmt:v=>`${(v/1000).toFixed(1)}s`,good:1800,ok:3000},
                     ].map((m,i)=>(
                       <div key={i} style={{background:"var(--s1)",borderRadius:8,padding:".6rem .75rem",border:"1px solid var(--border)"}}>
                         <div style={{fontSize:".65rem",color:"var(--text3)",fontWeight:600,marginBottom:".2rem"}} title={m.tip}>{m.label}</div>
@@ -5480,11 +5524,10 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                 </div>
               </div>
 
-              {/* Opportunities */}
-              {auditData.performance.opportunities?.length > 0 && (
+              {perfData.opportunities?.length > 0 && (
                 <div style={{marginBottom:".75rem"}}>
                   <div style={{fontSize:".78rem",fontWeight:700,color:"var(--text3)",marginBottom:".5rem",textTransform:"uppercase",letterSpacing:".06em"}}>Opportunities</div>
-                  {auditData.performance.opportunities.map((opp,i)=>(
+                  {perfData.opportunities.map((opp,i)=>(
                     <div key={i} style={{background:"var(--s1)",borderRadius:8,padding:".65rem .85rem",border:"1px solid var(--border)",borderLeft:`3px solid ${opp.score<=0.5?"var(--red)":"var(--amber)"}`,marginBottom:".4rem"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                         <div style={{fontSize:".82rem",fontWeight:600}}>{opp.title}</div>
@@ -5499,11 +5542,10 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                 </div>
               )}
 
-              {/* Diagnostics */}
-              {auditData.performance.diagnostics?.length > 0 && (
+              {perfData.diagnostics?.length > 0 && (
                 <div>
                   <div style={{fontSize:".78rem",fontWeight:700,color:"var(--text3)",marginBottom:".5rem",textTransform:"uppercase",letterSpacing:".06em"}}>Diagnostics</div>
-                  {auditData.performance.diagnostics.map((d,i)=>(
+                  {perfData.diagnostics.map((d,i)=>(
                     <div key={i} style={{display:"flex",alignItems:"center",gap:".5rem",padding:".35rem 0",borderBottom:"1px solid var(--border)",fontSize:".78rem"}}>
                       <span style={{color:d.score<=0.5?"var(--red)":"var(--amber)"}}>{d.score<=0.5?"🔴":"🟡"}</span>
                       <span style={{color:"var(--text)"}}>{d.title}</span>
@@ -5514,9 +5556,16 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
             </div>
           )}
 
-          {!auditData.performance && (
+          {perfLoading && !perfData && (
+            <div style={{marginTop:"1rem",padding:"1.5rem",textAlign:"center",background:"var(--s1)",borderRadius:10,border:"1px solid var(--border)"}}>
+              <div className="spinner-sm" style={{margin:"0 auto .5rem"}}/>
+              <div style={{fontSize:".82rem",color:"var(--text3)"}}>Loading performance data from Google PageSpeed Insights...</div>
+            </div>
+          )}
+
+          {!perfLoading && !perfData && auditData?.audited && (
             <div style={{marginTop:"1rem",padding:".75rem 1rem",background:"var(--s1)",borderRadius:8,border:"1px solid var(--border)",fontSize:".78rem",color:"var(--text3)"}}>
-              ⏳ PageSpeed Insights data was unavailable for this page. Try auditing again — performance data loads separately and may take a few seconds.
+              ⏳ PageSpeed Insights data was unavailable for this page. This can happen with very slow pages or pages that block Google's crawler.
             </div>
           )}
 
