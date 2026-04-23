@@ -28,8 +28,8 @@ const CSS = `
 /* ── Tooltips ── */
 .tip-trigger{display:inline-flex;align-items:center;gap:.25rem;cursor:help;position:relative;}
 .tip-icon{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;background:var(--s3);color:var(--text3);font-size:.58rem;font-weight:700;font-style:normal;flex-shrink:0;line-height:1;}
-.tip-bubble{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:.55rem .75rem;font-size:.73rem;font-weight:400;color:var(--text);line-height:1.5;width:260px;z-index:999;pointer-events:none;opacity:0;transition:opacity .15s;box-shadow:0 4px 16px rgba(0,0,0,.3);}
-.tip-bubble::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--s3);}
+.tip-bubble{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:.55rem .75rem;font-size:.73rem;font-weight:400;color:var(--text);line-height:1.5;width:260px;z-index:999;pointer-events:none;opacity:0;transition:opacity .15s;box-shadow:0 4px 16px rgba(0,0,0,.3);}
+.tip-bubble::after{content:'';position:absolute;bottom:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-bottom-color:var(--s3);}
 .tip-trigger:hover .tip-bubble,.tip-trigger:focus .tip-bubble{opacity:1;pointer-events:auto;}
 .benchmark{font-size:.68rem;font-weight:600;margin-left:.3rem;padding:.1rem .35rem;border-radius:4px;}
 .benchmark.good{background:var(--gdim);color:var(--green);}
@@ -933,6 +933,9 @@ export default function RankActions() {
   const [showUpgrade,  setShowUpgrade]  = useState(false);
   const [planBilling,  setPlanBilling]  = useState("monthly");
   const [gscSitePicker, setGscSitePicker] = useState(null); // list of sites to pick from // for plan selection screen
+
+  // ── Browser tab title ─────────────────────────────────────
+  useEffect(() => { document.title = "RankActions"; }, []);
 
   // ── Plan helpers ────────────────────────────────────────────
   const isAgency  = plan === "agency";
