@@ -586,8 +586,10 @@ const CSS = `
 .cl-socialButtonsBlockButton{background:#fff!important;color:#333!important;border:1px solid #ddd!important;font-weight:600!important;}
 .cl-socialButtonsBlockButton:hover{background:#f5f5f5!important;}
 .cl-socialButtonsBlockButtonText{color:#333!important;}
-.cl-otpCodeFieldInput,.cl-otpCodeField input{background:var(--s2)!important;border:2px solid var(--border2)!important;color:var(--text)!important;font-size:1.2rem!important;border-radius:8px!important;}
+.cl-otpCodeFieldInput,.cl-otpCodeField input{background:var(--s2)!important;border:2px solid var(--border2)!important;color:var(--text)!important;font-size:1rem!important;border-radius:6px!important;width:36px!important;height:40px!important;padding:0!important;text-align:center!important;}
 .cl-otpCodeFieldInput:focus,.cl-otpCodeField input:focus{border-color:var(--blue)!important;box-shadow:0 0 0 2px rgba(77,123,255,.25)!important;}
+.cl-otpCodeField{gap:6px!important;justify-content:center!important;overflow:visible!important;}
+.cl-card,.cl-rootBox,.cl-signIn-root,.cl-signUp-root{overflow:visible!important;}
 .cl-formFieldInput{background:var(--s2)!important;border:1px solid var(--border2)!important;color:var(--text)!important;}
 .cl-formFieldInput:focus{border-color:var(--blue)!important;}
 
