@@ -586,10 +586,6 @@ const CSS = `
 .cl-socialButtonsBlockButton{background:#fff!important;color:#333!important;border:1px solid #ddd!important;font-weight:600!important;}
 .cl-socialButtonsBlockButton:hover{background:#f5f5f5!important;}
 .cl-socialButtonsBlockButtonText{color:#333!important;}
-.cl-otpCodeField input{background:var(--s2)!important;border-color:var(--border2)!important;color:var(--text)!important;}
-.cl-otpCodeField input:focus{border-color:var(--blue)!important;box-shadow:0 0 0 2px rgba(77,123,255,.25)!important;}
-.cl-otpCodeField{overflow:visible!important;}
-.cl-card,.cl-rootBox{overflow:visible!important;}
 .cl-formFieldInput{background:var(--s2)!important;border:1px solid var(--border2)!important;color:var(--text)!important;}
 .cl-formFieldInput:focus{border-color:var(--blue)!important;}
 
