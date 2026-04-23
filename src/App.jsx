@@ -1108,11 +1108,11 @@ export default function RankActions() {
 
   // ── Show onboarding tour on first dashboard visit ──────────
   useEffect(() => {
-    if (screen === "dashboard" && isSignedIn && !localStorage.getItem("ra_tour_complete")) {
-      const timer = setTimeout(() => setShowTour(true), 800);
+    if (screen === "dashboard" && isSignedIn && selectedSite && !localStorage.getItem("ra_tour_complete")) {
+      const timer = setTimeout(() => setShowTour(true), 1200);
       return () => clearTimeout(timer);
     }
-  }, [screen, isSignedIn]);
+  }, [screen, isSignedIn, selectedSite]);
 
   // ── Handle Stripe checkout return ─────────────────────────
   useEffect(() => {
@@ -3519,6 +3519,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
                     ["User ID",     selected._id,     true],
                     ["Clerk ID",    selected.clerkId||"—",true],
                     ["Email",       selected.email,      false],
+                    ...(selected.googleEmail && selected.googleEmail !== selected.email ? [["GSC account", selected.googleEmail, false]] : []),
                     ["Signed up",   fmt(selected.signedUpAt), false],
                     ["Last seen",   fmt(selected.lastSeenAt), false],
                     ["Login count", selected.loginCount||0,  false],
