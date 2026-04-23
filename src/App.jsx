@@ -3326,7 +3326,8 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
 
   // ── Admin — replace with your Clerk user ID once you have it ──
   const ADMIN_CLERK_IDS = [
-    "user_3CMXybSmGDdSNc2caXRZraMoZdt", // Dan — hardcoded failsafe
+    "user_3CMXybSmGDdSNc2caXRZraMoZdt", // Dan
+    "user_3Ckg4xABwhpj6NJBhgnOrjZeoZs", // Team
   ];
   const isAdmin = ADMIN_CLERK_IDS.includes(user?.id) || isAdminFlag;
 
