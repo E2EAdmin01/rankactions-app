@@ -3657,6 +3657,20 @@ Write 3-4 short paragraphs: overall performance, biggest opportunities, what to 
         `── LINK BUILDING ──`,
         `Identified: ${linkStats.identified} | Contacted: ${linkStats.contacted} | Replied: ${linkStats.replied} | Secured: ${linkStats.secured}`,
         ``,
+        ...(() => {
+          let strat = null;
+          try { strat = JSON.parse(localStorage.getItem(`ra_strategy_${selectedSite}`) || "null"); } catch {}
+          if (!strat) return [];
+          const pub = strat.clusters.filter(c=>c.status==="published").length + (strat.pillar.status==="published"?1:0);
+          const total = strat.clusters.length + 1;
+          return [`── STRATEGY PROGRESS ──`, `Topic: ${strat.topic}`, `Pillar: ${strat.pillar.title}`, `Progress: ${pub}/${total} published (${Math.round((pub/total)*100)}%)`, ``];
+        })(),
+        ...(() => {
+          let hist = [];
+          try { hist = JSON.parse(localStorage.getItem(`ra_content_history_${selectedSite}`) || "[]"); } catch {}
+          if (hist.length === 0) return [];
+          return [`── CONTENT GENERATED ──`, `${hist.length} blog posts generated`, ...hist.slice(-8).reverse().map(h => `  "${h.keyword}" — ${h.date}`), ``];
+        })(),
         reportSummary ? `── AI SUMMARY ──\n${reportSummary}` : ``,
         ``,
         `Report by RankActions · rankactions.com`,
@@ -3908,6 +3922,86 @@ Write 3-4 short paragraphs: overall performance, biggest opportunities, what to 
             <div style={{fontSize:".82rem",color:"var(--text3)",textAlign:"center",padding:"2rem 0"}}>Connect Google Search Console to see page performance</div>
           )}
         </div>
+
+        {/* Rank Movement */}
+        {(() => {
+          const movers = (siteData?.keywords || []).filter(k => k.positionChange && k.positionChange !== 0)
+            .map(k => ({ keyword: k.keyword, position: k.position, change: k.positionChange }));
+          if (movers.length === 0) return null;
+          return (
+            <div style={{...cardStyle, marginBottom:"1rem"}}>
+              <div style={headStyle}><Tip term="rankTracker">📈 Rank Movement</Tip></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".75rem"}}>
+                <div>
+                  <div style={{fontSize:".72rem",color:"var(--green)",fontWeight:600,marginBottom:".4rem"}}>↑ Climbers</div>
+                  {movers.filter(m=>m.change>0).sort((a,b)=>b.change-a.change).slice(0,5).map((m,i) => (
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",padding:".3rem 0",borderBottom:"1px solid var(--b2)",fontSize:".78rem"}}>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{m.keyword}</span>
+                      <span style={{color:"var(--green)",fontWeight:600,flexShrink:0,marginLeft:".5rem"}}>↑{m.change.toFixed(1)} → #{m.position}</span>
+                    </div>
+                  ))}
+                  {movers.filter(m=>m.change>0).length === 0 && <div style={{fontSize:".78rem",color:"var(--text3)"}}>No upward movement</div>}
+                </div>
+                <div>
+                  <div style={{fontSize:".72rem",color:"var(--red)",fontWeight:600,marginBottom:".4rem"}}>↓ Dropped</div>
+                  {movers.filter(m=>m.change<0).sort((a,b)=>a.change-b.change).slice(0,5).map((m,i) => (
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",padding:".3rem 0",borderBottom:"1px solid var(--b2)",fontSize:".78rem"}}>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{m.keyword}</span>
+                      <span style={{color:"var(--red)",fontWeight:600,flexShrink:0,marginLeft:".5rem"}}>↓{Math.abs(m.change).toFixed(1)} → #{m.position}</span>
+                    </div>
+                  ))}
+                  {movers.filter(m=>m.change<0).length === 0 && <div style={{fontSize:".78rem",color:"var(--text3)"}}>No drops</div>}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Strategy Progress */}
+        {(() => {
+          let strat = null;
+          try { strat = JSON.parse(localStorage.getItem(`ra_strategy_${selectedSite}`) || "null"); } catch {}
+          if (!strat) return null;
+          const published = strat.clusters.filter(c=>c.status==="published").length + (strat.pillar.status==="published"?1:0);
+          const drafted = strat.clusters.filter(c=>c.status==="drafted").length + (strat.pillar.status==="drafted"?1:0);
+          const notStarted = strat.clusters.filter(c=>c.status==="not_started").length + (strat.pillar.status==="not_started"?1:0);
+          const total = published + drafted + notStarted;
+          const pct = total > 0 ? Math.round((published / total) * 100) : 0;
+          return (
+            <div style={{...cardStyle, marginBottom:"1rem"}}>
+              <div style={headStyle}><Tip term="pillarPage">🗺 Strategy Progress</Tip></div>
+              <div style={{fontSize:".88rem",fontWeight:600,marginBottom:".35rem"}}>{strat.topic}</div>
+              <div style={{fontSize:".78rem",color:"var(--text2)",marginBottom:".75rem"}}>
+                Pillar: {strat.pillar.title} · {strat.clusters.length} cluster posts
+              </div>
+              <div style={{display:"flex",gap:2,borderRadius:4,overflow:"hidden",height:20,marginBottom:".5rem"}}>
+                {published > 0 && <div style={{flex:published,background:"var(--green)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".6rem",fontWeight:700,color:"#000"}}>{published} published</div>}
+                {drafted > 0 && <div style={{flex:drafted,background:"var(--amber)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".6rem",fontWeight:700,color:"#000"}}>{drafted} drafted</div>}
+                {notStarted > 0 && <div style={{flex:notStarted,background:"var(--s3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".6rem",fontWeight:700,color:"var(--text3)"}}>{notStarted} to do</div>}
+              </div>
+              <div style={{fontSize:".78rem",color:pct>=75?"var(--green)":pct>=50?"var(--amber)":"var(--text3)"}}>{pct}% complete</div>
+            </div>
+          );
+        })()}
+
+        {/* Content Generation History */}
+        {(() => {
+          let history = [];
+          try { history = JSON.parse(localStorage.getItem(`ra_content_history_${selectedSite}`) || "[]"); } catch {}
+          if (history.length === 0) return null;
+          return (
+            <div style={{...cardStyle, marginBottom:"1rem"}}>
+              <div style={headStyle}>✍ Content Generated</div>
+              <div style={{fontSize:".78rem",color:"var(--text2)",marginBottom:".65rem"}}>{history.length} blog {history.length===1?"post":"posts"} generated for this site</div>
+              {history.slice(-8).reverse().map((h,i) => (
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:".35rem 0",borderBottom:"1px solid var(--b2)",fontSize:".78rem"}}>
+                  <span style={{color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>"{h.keyword}"</span>
+                  <span style={{color:"var(--text3)",flexShrink:0,marginLeft:".75rem",fontSize:".72rem"}}>{h.date}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         <div style={{fontSize:".75rem",color:"var(--text3)",textAlign:"center",padding:".5rem 0"}}>
           Report generated by RankActions · {new Date().toLocaleDateString("en-GB")} · Data from Google Search Console
