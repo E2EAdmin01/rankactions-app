@@ -5429,7 +5429,7 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
     const auditTipMap = {"Title Tag":"titleTag","Meta Description":"metaDesc","H1 Heading":"h1","Content Structure":"h2","Canonical Tag":"canonical","Mobile Friendliness":"viewport","Image Alt Text":"altText","Structured Data":"schema","Social Meta Tags":"openGraph","Internal Links":"internalLinks","HTTPS":"ssl","Page Speed":"pageSpeed","Content Length":"wordCount"};
 
     return (
-      <div className="content" style={{padding:"1.5rem 2rem",maxWidth:900}}>
+      <div className="content" style={{padding:"1.5rem 2rem",maxWidth:1100}}>
         <div style={{marginBottom:"1.5rem"}}>
           <div style={{fontSize:"1.3rem",fontWeight:700}}>Page SEO Audit</div>
           <div style={{fontSize:".82rem",color:"var(--text3)"}}>Enter any URL for an instant SEO + performance health check with Core Web Vitals</div>
@@ -5470,8 +5470,9 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                   <text x="60" y="72" textAnchor="middle" fill="var(--text3)" fontSize="11">Performance</text>
                 </svg>
               ) : perfLoading ? (
-                <div style={{width:115,height:115,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",border:"8px solid var(--border)"}}>
+                <div style={{width:115,height:115,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",borderRadius:"50%",border:"8px solid var(--border)"}}>
                   <div className="spinner-sm"/>
+                  <div style={{fontSize:".55rem",color:"var(--text3)",marginTop:".25rem"}}>Loading...</div>
                 </div>
               ) : (
                 <svg viewBox="0 0 120 120" style={{width:115,height:115}}>
@@ -5513,9 +5514,9 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
               {l:"Load time",v:`${auditData.loadTime}ms`,ok:auditData.loadTime<2000,warn:auditData.loadTime<4000},
               {l:"Word count",v:`~${auditData.wordCount}`,ok:auditData.wordCount>=300,warn:auditData.wordCount>=150},
             ].map(m=>(
-              <div key={m.l} style={{background:"var(--s1)",borderRadius:8,padding:".5rem .65rem",border:"1px solid var(--border)",textAlign:"center"}}>
-                <div style={{fontSize:".6rem",color:"var(--text3)",fontWeight:600,marginBottom:".15rem"}}>{m.l}</div>
-                <div style={{fontSize:".95rem",fontWeight:700,fontFamily:"var(--mono)",color:m.v==="—"||m.v==="..."?"var(--text3)":m.ok?"var(--green)":m.warn?"var(--amber)":"var(--red)"}}>{m.v}</div>
+              <div key={m.l} style={{background:"var(--s1)",borderRadius:8,padding:".6rem .75rem",border:"1px solid var(--border)",textAlign:"center"}}>
+                <div style={{fontSize:".68rem",color:"var(--text3)",fontWeight:600,marginBottom:".2rem"}}>{m.l}</div>
+                <div style={{fontSize:"1.05rem",fontWeight:700,fontFamily:"var(--mono)",color:m.v==="—"||m.v==="..."?"var(--text3)":m.ok?"var(--green)":m.warn?"var(--amber)":"var(--red)"}}>{m.v}</div>
               </div>
             ))}
           </div>
@@ -5523,21 +5524,21 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           {/* ── SEO Issues ── */}
           <div style={{display:"flex",flexDirection:"column",gap:".5rem"}}>
             {auditData.issues.filter(i=>i.type!=="pass").map((issue,i)=>(
-              <div key={i} style={{background:"var(--s1)",borderRadius:10,border:"1px solid var(--border)",padding:".85rem 1rem",borderLeft:`3px solid ${typeColor(issue.type)}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:".4rem",marginBottom:".25rem"}}>
+              <div key={i} style={{background:"var(--s1)",borderRadius:10,border:"1px solid var(--border)",padding:"1rem 1.15rem",borderLeft:`3px solid ${typeColor(issue.type)}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:".4rem",marginBottom:".3rem"}}>
                   <span>{typeIcon(issue.type)}</span>
-                  <span style={{fontSize:".7rem",fontWeight:700,color:typeColor(issue.type),textTransform:"uppercase",letterSpacing:".04em"}}>{issue.type}</span>
-                  <span style={{fontSize:".7rem",color:"var(--text3)"}}>· {auditTipMap[issue.category] ? <Tip term={auditTipMap[issue.category]}>{issue.category}</Tip> : issue.category}</span>
+                  <span style={{fontSize:".75rem",fontWeight:700,color:typeColor(issue.type),textTransform:"uppercase",letterSpacing:".04em"}}>{issue.type}</span>
+                  <span style={{fontSize:".75rem",color:"var(--text3)"}}>· {auditTipMap[issue.category] ? <Tip term={auditTipMap[issue.category]}>{issue.category}</Tip> : issue.category}</span>
                 </div>
-                <div style={{fontSize:".85rem",fontWeight:600,marginBottom:".25rem"}}>{issue.issue}</div>
-                {issue.fix && <div style={{fontSize:".78rem",color:"var(--text2)",lineHeight:1.5}}>{issue.fix}</div>}
-                {issue.current && <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".25rem",fontFamily:"monospace",wordBreak:"break-all"}}>Current: {issue.current}</div>}
+                <div style={{fontSize:".92rem",fontWeight:600,marginBottom:".3rem"}}>{issue.issue}</div>
+                {issue.fix && <div style={{fontSize:".85rem",color:"var(--text2)",lineHeight:1.55}}>{issue.fix}</div>}
+                {issue.current && <div style={{fontSize:".75rem",color:"var(--text3)",marginTop:".3rem",fontFamily:"monospace",wordBreak:"break-all"}}>Current: {issue.current}</div>}
               </div>
             ))}
             <div style={{marginTop:".4rem"}}>
               <div style={{fontSize:".78rem",fontWeight:600,color:"var(--text3)",marginBottom:".4rem"}}>Passed ({auditData.issues.filter(i=>i.type==="pass").length})</div>
               {auditData.issues.filter(i=>i.type==="pass").map((issue,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:".4rem",padding:".3rem 0",fontSize:".75rem",color:"var(--text3)"}}>🟢 {auditTipMap[issue.category] ? <Tip term={auditTipMap[issue.category]}>{issue.category}</Tip> : issue.category}: {issue.issue}</div>
+                <div key={i} style={{display:"flex",alignItems:"center",gap:".4rem",padding:".35rem 0",fontSize:".82rem",color:"var(--text3)"}}>🟢 {auditTipMap[issue.category] ? <Tip term={auditTipMap[issue.category]}>{issue.category}</Tip> : issue.category}: {issue.issue}</div>
               ))}
             </div>
           </div>
@@ -5549,9 +5550,9 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                 <div style={{marginBottom:".75rem"}}>
                   <div style={{fontSize:".78rem",fontWeight:700,color:"var(--text3)",marginBottom:".5rem",textTransform:"uppercase",letterSpacing:".06em"}}>Performance Opportunities</div>
                   {perfData.opportunities.map((opp,i)=>(
-                    <div key={i} style={{background:"var(--s1)",borderRadius:8,padding:".65rem .85rem",border:"1px solid var(--border)",borderLeft:`3px solid ${opp.score<=0.5?"var(--red)":"var(--amber)"}`,marginBottom:".4rem"}}>
+                    <div key={i} style={{background:"var(--s1)",borderRadius:8,padding:".75rem .95rem",border:"1px solid var(--border)",borderLeft:`3px solid ${opp.score<=0.5?"var(--red)":"var(--amber)"}`,marginBottom:".4rem"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div style={{fontSize:".82rem",fontWeight:600}}>{opp.title}</div>
+                        <div style={{fontSize:".88rem",fontWeight:600}}>{opp.title}</div>
                         <div style={{display:"flex",gap:".4rem",flexShrink:0}}>
                           {opp.savings && <span style={{fontSize:".68rem",fontWeight:700,padding:".15rem .4rem",borderRadius:4,background:"var(--gdim)",color:"var(--green)"}}>Save {opp.savings}</span>}
                           {opp.savingsBytes && <span style={{fontSize:".68rem",fontWeight:700,padding:".15rem .4rem",borderRadius:4,background:"var(--bdim)",color:"var(--blue)"}}>{opp.savingsBytes}</span>}
