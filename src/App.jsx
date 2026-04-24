@@ -925,7 +925,7 @@ export default function RankActions() {
       const data = await res.json();
       if (data.success) {
         setIndexingStatus("success");
-        setIndexingMsg(`Google will re-crawl this page shortly`);
+        setIndexingMsg(`Re-crawl requested. Google typically processes this within 1–7 days.`);
         setTimeout(() => { setIndexingStatus(null); setIndexingMsg(""); }, 5000);
       } else {
         setIndexingStatus("error");
