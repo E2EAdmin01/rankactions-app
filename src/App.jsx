@@ -1267,7 +1267,7 @@ export default function RankActions() {
       ?.slice(0, 2)
       ?.map(p => ({
         url:    p.page.replace(/^https?:\/\/[^/]+/,"") || "/",
-        detail: `High traffic page · load time unverified — connect PageSpeed API for real data`,
+        detail: `High traffic page — run a Page Audit for Core Web Vitals and speed recommendations`,
         priority: "medium",
       })) || [];
 
@@ -1291,10 +1291,10 @@ export default function RankActions() {
 
     const speedPages = slowPages.length > 0 ? slowPages : (
       realPages.length > 0
-        ? realPages.slice(0, 2).map(p => ({ url: p.url, detail: "Load time unverified — connect PageSpeed API for real data", priority: "medium" }))
+        ? realPages.slice(0, 2).map(p => ({ url: p.url, detail: "Run a Page Audit for speed score and Core Web Vitals", priority: "medium" }))
         : [
-            { url:`/`,          detail:"Load time unverified — connect PageSpeed API", priority:"medium" },
-            { url:`/services/`, detail:"Load time unverified — connect PageSpeed API", priority:"medium" },
+            { url:`/`,          detail:"Run a Page Audit for speed score and Core Web Vitals", priority:"medium" },
+            { url:`/services/`, detail:"Run a Page Audit for speed score and Core Web Vitals", priority:"medium" },
           ]
     );
 
@@ -1344,8 +1344,8 @@ export default function RankActions() {
       {
         t:"warning", icon:"⏱", label:"Slow page speed",
         fixCategory:"pagespeed",
-        summary:`Key pages on ${site} may load slowly on mobile — Google uses mobile speed as a ranking factor.`,
-        fix:"Compress images, enable lazy loading and remove unused JavaScript to improve load time.",
+        summary:`Key pages on ${site} may load slowly on mobile — Google uses mobile speed as a ranking factor. Use Page Audit for detailed scores.`,
+        fix:"Compress images, enable lazy loading and remove unused JavaScript to improve load time. Run a Page Audit on any URL for Core Web Vitals and specific recommendations.",
         pages: speedPages,
       },
       {
