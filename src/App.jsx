@@ -895,6 +895,33 @@ export default function RankActions() {
   const [modalData,    setModalData]    = useState(null);
   const [modalLoading, setModalLoading] = useState(false);
   const [modalApplied, setModalApplied] = useState(new Set());
+  const [indexingStatus, setIndexingStatus] = useState(null); // null | 'loading' | 'success' | 'error'
+  const [indexingMsg, setIndexingMsg] = useState("");
+
+  const requestIndexing = async (pageUrl) => {
+    setIndexingStatus("loading");
+    try {
+      const fullUrl = pageUrl.startsWith("http") ? pageUrl : `https://${selectedSite.replace("sc-domain:","")}${pageUrl}`;
+      const uid = userId || localStorage.getItem("rankactions_userId") || "";
+      const res = await authFetch(`${WORKER_URL}/api/request-indexing`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pageUrl: fullUrl, userId: uid }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIndexingStatus("success");
+        setIndexingMsg(`Google will re-crawl this page shortly`);
+      } else {
+        setIndexingStatus("error");
+        setIndexingMsg(data.error || "Request failed");
+      }
+    } catch (err) {
+      setIndexingStatus("error");
+      setIndexingMsg(err.message);
+    }
+    setTimeout(() => { setIndexingStatus(null); setIndexingMsg(""); }, 5000);
+  };
   const contentPresetRef = useRef(null);
   const [croModal,   setCroModal]   = useState(null);
   const [croData,    setCroData]    = useState(null);
@@ -1553,7 +1580,8 @@ Return ONLY valid JSON — no markdown:
 }`,
         isTechnicalFix
           ? "Technical SEO specialist. Return valid JSON only. No markdown. Return ONLY ready-to-use values — never include problem descriptions or explanations in JSON field values."
-          : "Senior SEO copywriter. Return valid JSON only. No markdown. Be SPECIFIC to the keyword and page — never generic."
+          : "Senior SEO copywriter. Return valid JSON only. No markdown. Be SPECIFIC to the keyword and page — never generic.",
+        "quality"
       );
       setModalData(JSON.parse(txt.replace(/```json|```/g,"").trim()));
     } catch(e) {
@@ -1639,7 +1667,8 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     try {
       const txt = await callClaude(
         prompts[row.fixType] || prompts.cta,
-        "Senior CRO specialist. Return valid JSON only. No markdown. Be specific to the page and issue — never generic."
+        "Senior CRO specialist. Return valid JSON only. No markdown. Be specific to the page and issue — never generic.",
+        "quality"
       );
       setCroData(JSON.parse(txt.replace(/```json|```/g,"").trim()));
     } catch {
@@ -2652,6 +2681,14 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
             onClick={()=>{setModalApplied(p=>new Set([...p,modal.id]));setDoneFixes(p=>new Set([...p,modal.id]));}}>
             {modalApplied.has(modal.id)?"✓ Applied":"✅ Mark as applied"}
           </button>
+          {modalApplied.has(modal.id) && siteData && (
+            <button className={`mf-btn ${indexingStatus==="success"?"done":""}`}
+              disabled={indexingStatus==="loading"||indexingStatus==="success"}
+              onClick={()=>requestIndexing(modal.page || "/")}>
+              {indexingStatus==="loading"?"⏳ Requesting…":indexingStatus==="success"?"✓ Indexed":"🔄 Request Google re-crawl"}
+            </button>
+          )}
+          {indexingMsg && <div style={{width:"100%",textAlign:"center",fontSize:".7rem",color:indexingStatus==="success"?"var(--green)":"var(--red)",marginTop:".25rem"}}>{indexingMsg}</div>}
         </div>
       </div>
     </div>
@@ -4215,8 +4252,7 @@ ${stratHtml}${contentHtml}
       : "";
 
     try {
-      const txt = await callClaude(
-        `You are an expert UK link building strategist. Generate 8 specific, actionable link building opportunities for this website.
+      const prompt = `You are an expert UK link building strategist. Generate 8 specific, actionable link building opportunities for this website.
 
 Site: ${displaySite(selectedSite)}
 Top keywords and positions: ${topKws}
@@ -4224,7 +4260,7 @@ Top pages: ${topPages}
 Country: UK
 ${prevOppContext}${pipelineContext}
 CRITICAL RULES:
-- Suggest REAL, specific types of websites and platforms the user can approach — include the actual URL or platform name where possible (e.g. "yell.com", "Checkatrade", "HARO", "SourceBottle")
+- Search Google for REAL websites and platforms this business can approach — include actual verified URLs
 - For each opportunity, provide a SPECIFIC contact method — where to find the contact form, email pattern, or submission page
 - Include step-by-step instructions a complete beginner could follow
 - Never promise guaranteed results — use language like "may improve rankings" or "can help build authority"
@@ -4239,19 +4275,39 @@ Return ONLY valid JSON array:
     "difficulty": "easy | medium | hard",
     "description": "2-3 sentences explaining exactly what this is and why it matters for SEO",
     "targets": [
-      {"name": "specific platform or site name", "url": "https://actual-url.com", "contactMethod": "how to find the contact — e.g. look for Contact Us page, use their submission form at /submit, email format is editor@domain.com"}
+      {"name": "specific platform or site name", "url": "https://actual-url.com", "contactMethod": "how to find the contact"}
     ],
     "steps": ["Step 1: Go to...", "Step 2: Click...", "Step 3: Fill in...", "Step 4: Submit and wait for..."],
     "value": "High | Medium | Low",
     "timeToResult": "e.g. 2-4 weeks",
-    "complianceNote": "any important caveats — e.g. never pay for links, ensure nofollow is acceptable, check their editorial guidelines first"
+    "complianceNote": "any important caveats"
   }
 ]
 
-Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource pages, HARO, testimonials), 2 hard but high value (guest posts, press), 1 creative/unexpected approach.`,
-        "Expert UK link building strategist. Return valid JSON array only. Be extremely specific — name real platforms, real URLs, real submission pages. Never fabricate URLs — only suggest platforms you are certain exist. If unsure of a URL, describe how to find it via Google instead."
-      );
+Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource pages, HARO, testimonials), 2 hard but high value (guest posts, press), 1 creative/unexpected approach.`;
+
+      // Use Gemini research endpoint (grounded in real Google search results)
+      // Falls back to Claude automatically if Gemini isn't configured
+      const res = await authFetch(`${WORKER_URL}/api/ai/research`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          systemPrompt: "Expert UK link building strategist. Return valid JSON array only. Be extremely specific — name real platforms with verified URLs from your search results. Never fabricate URLs.",
+          task: "link_building",
+        }),
+      });
+      const data = await res.json();
+      const txt = data.text || "";
       const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
+
+      // If Gemini provided grounding sources, enrich the opportunities
+      if (data.sources?.length > 0) {
+        parsed.forEach(opp => {
+          if (!opp.verified) opp.verified = data.provider === "gemini";
+        });
+      }
+
       setLinkOpps(parsed);
       // Save to history for deduplication
       try {
@@ -4287,7 +4343,8 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
     try {
       const txt = await callClaude(
         templates[linkTemplate],
-        "Expert outreach copywriter. Write natural, human-sounding emails. Never use buzzwords like 'synergy' or 'leverage'. Be specific and concise."
+        "Expert outreach copywriter. Write natural, human-sounding emails. Never use buzzwords like 'synergy' or 'leverage'. Be specific and concise.",
+        "quality"
       );
       setLinkTemplateOutput(txt.trim());
     } catch {
@@ -5782,7 +5839,10 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                 <div key={i} className="links-opp-card">
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:".4rem"}}>
                     <span className={`links-opp-type ${diffColor(opp.difficulty)}`}>{opp.difficulty} · {opp.type}</span>
-                    <span style={{fontSize:".72rem",color:valColor(opp.value),fontWeight:700}}>{opp.value} value · {opp.timeToResult}</span>
+                    <span style={{display:"flex",alignItems:"center",gap:".4rem"}}>
+                      {opp.verified && <span style={{fontSize:".6rem",fontWeight:700,color:"var(--blue)",background:"var(--bdim)",padding:".15rem .4rem",borderRadius:4}}>✓ Verified by Google</span>}
+                      <span style={{fontSize:".72rem",color:valColor(opp.value),fontWeight:700}}>{opp.value} value · {opp.timeToResult}</span>
+                    </span>
                   </div>
                   <div className="links-opp-title">{opp.title}</div>
                   <div className="links-opp-desc">{opp.description}</div>
