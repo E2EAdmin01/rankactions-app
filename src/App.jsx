@@ -4319,7 +4319,15 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
       });
       const data = await res.json();
       const txt = data.text || "";
-      const parsed = JSON.parse(txt.replace(/```json|```/g,"").trim());
+      // Extract JSON array robustly — Gemini sometimes wraps grounded responses in commentary
+      // like "Based on my search, here are…" before the JSON. Find the first [ to last ].
+      const cleaned = txt.replace(/```json|```/g, "").trim();
+      const firstBracket = cleaned.indexOf("[");
+      const lastBracket = cleaned.lastIndexOf("]");
+      const jsonCandidate = (firstBracket !== -1 && lastBracket > firstBracket)
+        ? cleaned.slice(firstBracket, lastBracket + 1)
+        : cleaned;
+      const parsed = JSON.parse(jsonCandidate);
 
       // If Gemini provided grounding sources, enrich the opportunities
       if (data.sources?.length > 0) {
