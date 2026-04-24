@@ -912,15 +912,21 @@ export default function RankActions() {
       if (data.success) {
         setIndexingStatus("success");
         setIndexingMsg(`Google will re-crawl this page shortly`);
+        setTimeout(() => { setIndexingStatus(null); setIndexingMsg(""); }, 5000);
       } else {
         setIndexingStatus("error");
-        setIndexingMsg(data.error || "Request failed");
+        // Surface Google's actual error message when available — far more useful than our generic wrapper
+        const googleMsg = data.detail?.error?.message;
+        const statusCode = data.detail?.error?.code;
+        setIndexingMsg(googleMsg ? `[${statusCode || '?'}] ${googleMsg}` : (data.error || "Request failed"));
+        // Keep errors visible for 15s so they can actually be read
+        setTimeout(() => { setIndexingStatus(null); setIndexingMsg(""); }, 15000);
       }
     } catch (err) {
       setIndexingStatus("error");
       setIndexingMsg(err.message);
+      setTimeout(() => { setIndexingStatus(null); setIndexingMsg(""); }, 15000);
     }
-    setTimeout(() => { setIndexingStatus(null); setIndexingMsg(""); }, 5000);
   };
   const contentPresetRef = useRef(null);
   const [croModal,   setCroModal]   = useState(null);
