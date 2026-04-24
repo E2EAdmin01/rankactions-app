@@ -2464,10 +2464,12 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
             })}
           </div>
 
-          {/* Data notice */}
+          {/* Data notice — only show when not connected */}
+          {!siteData && (
           <div className="issue-data-note">
-            🔍 <strong>These are demo issues.</strong> Connect Google Search Console and the PageSpeed Insights API (Phase 2) to see real technical issues specific to your site — including actual slow pages, real broken links and missing meta descriptions detected by crawling your live site.
+            🔍 <strong>These are demo issues.</strong> Connect Google Search Console to see real technical issues specific to your site — including actual slow pages, real broken links and missing meta descriptions detected by crawling your live site.
           </div>
+          )}
         </>}
       </div>
     );
