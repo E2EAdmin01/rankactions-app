@@ -901,7 +901,21 @@ export default function RankActions() {
   const requestIndexing = async (pageUrl) => {
     setIndexingStatus("loading");
     try {
-      const fullUrl = pageUrl.startsWith("http") ? pageUrl : `https://${selectedSite.replace("sc-domain:","")}${pageUrl}`;
+      // Build the full URL robustly:
+      // - If pageUrl is already absolute, use it as-is
+      // - Otherwise: strip sc-domain: prefix from the site, strip any existing http(s):// (to avoid double-prefixing),
+      //   strip trailing slashes, and ensure the path starts with /
+      let fullUrl;
+      if (pageUrl.startsWith("http://") || pageUrl.startsWith("https://")) {
+        fullUrl = pageUrl;
+      } else {
+        const domain = selectedSite
+          .replace(/^sc-domain:/, "")
+          .replace(/^https?:\/\//, "")
+          .replace(/\/+$/, "");
+        const path = pageUrl.startsWith("/") ? pageUrl : `/${pageUrl}`;
+        fullUrl = `https://${domain}${path}`;
+      }
       const uid = userId || localStorage.getItem("rankactions_userId") || "";
       const res = await authFetch(`${WORKER_URL}/api/request-indexing`, {
         method: "POST",
