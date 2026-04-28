@@ -1062,66 +1062,81 @@ export default function RankActions() {
   }, [isSignedIn]);
 
   // ── On mount: check if returning from Google OAuth ──────────
-  // The Worker redirects back with ?userId=xxx&auth=success
+  // The Worker redirects back with ?auth=success after Google OAuth.
+// We then fetch the user's profile (server-side source of truth) to
+// learn the userId / connected sites, since the URL no longer carries
+// these for security reasons (C2/C6/C10 fixes).
   useEffect(() => {
     const params      = new URLSearchParams(window.location.search);
-    const uid         = params.get("userId");
     const result      = params.get("auth");
     const saved       = localStorage.getItem("rankactions_userId");
     const savedSite   = localStorage.getItem("rankactions_selectedSite");
     const savedSites  = localStorage.getItem("rankactions_sites");
 
-    if (result === "error") setDataError("Google connection failed. Check your Worker URL is correct.");
+    if (result === "error" || result === "login_required") {
+      setDataError("Google connection failed. Please try again.");
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
 
-    const activeUid = uid || saved;
-    if (activeUid) {
-      setUserId(activeUid);
-      setIsConnected(true);
-      localStorage.setItem("rankactions_userId", activeUid);
+    const isFreshOAuth = result === "success";
 
-      if (uid) {
-        // Fresh OAuth return — fetch the user's GSC sites then let them pick
-        authFetch(`${WORKER_URL}/api/gsc-sites`)
-          .then(r => r.json())
-          .then(data => {
-            const gscSites = data.sites || [];
-            const pendingSite = localStorage.getItem("rankactions_pending_site") || "";
-            localStorage.removeItem("rankactions_pending_site");
+    if (isFreshOAuth) {
+      // Fresh OAuth return — fetch profile to get the userId the worker
+      // stored against our Clerk session, then load GSC sites.
+      authFetch(`${WORKER_URL}/api/user/profile`)
+        .then(r => r.json())
+        .then(profile => {
+          if (!profile.found || !profile.userId) {
+            setDataError("Connection succeeded but profile sync didn't complete. Please refresh.");
+            return;
+          }
+          const uid = profile.userId;
+          setUserId(uid);
+          setIsConnected(true);
+          localStorage.setItem("rankactions_userId", uid);
 
-            if (gscSites.length === 0) {
-              // No GSC sites — use what they typed
-              const fallback = pendingSite || "mywebsite.com";
-              setSelectedSite(fallback);
-              localStorage.setItem("rankactions_selectedSite", fallback);
-              setSites([fallback]);
-              localStorage.setItem("rankactions_sites", JSON.stringify([fallback]));
-            } else if (gscSites.length === 1) {
-              // Only one site — use it automatically, no picker needed
-              const site = gscSites[0].siteUrl;
-              setSelectedSite(site);
-              localStorage.setItem("rankactions_selectedSite", site);
-              setSites([site]);
-              localStorage.setItem("rankactions_sites", JSON.stringify([site]));
-            } else {
-              // Multiple sites — show picker with pending site pre-selected
-              setGscSitePicker({ sites: gscSites, pending: pendingSite, userId: uid });
-            }
-          })
-          .catch(() => {
-            const fallback = localStorage.getItem("rankactions_pending_site") || savedSite || "mywebsite.com";
-            localStorage.removeItem("rankactions_pending_site");
-            setSelectedSite(fallback);
-            localStorage.setItem("rankactions_selectedSite", fallback);
-            setSites([fallback]);
-            localStorage.setItem("rankactions_sites", JSON.stringify([fallback]));
-          });
-      } else {
-        // Returning user — restore from localStorage
-        if (savedSite && savedSite !== "mywebsite.com") setSelectedSite(savedSite);
-        if (savedSites) setSites(JSON.parse(savedSites));
-      }
+          return authFetch(`${WORKER_URL}/api/gsc-sites`)
+            .then(r => r.json())
+            .then(data => {
+              const gscSites = data.sites || [];
+              const pendingSite = localStorage.getItem("rankactions_pending_site") || "";
+              localStorage.removeItem("rankactions_pending_site");
+
+              if (gscSites.length === 0) {
+                const fallback = pendingSite || "mywebsite.com";
+                setSelectedSite(fallback);
+                localStorage.setItem("rankactions_selectedSite", fallback);
+                setSites([fallback]);
+                localStorage.setItem("rankactions_sites", JSON.stringify([fallback]));
+              } else if (gscSites.length === 1) {
+                const site = gscSites[0].siteUrl;
+                setSelectedSite(site);
+                localStorage.setItem("rankactions_selectedSite", site);
+                setSites([site]);
+                localStorage.setItem("rankactions_sites", JSON.stringify([site]));
+              } else {
+                setGscSitePicker({ sites: gscSites, pending: pendingSite });
+              }
+            });
+        })
+        .catch(() => {
+          const fallback = localStorage.getItem("rankactions_pending_site") || savedSite || "mywebsite.com";
+          localStorage.removeItem("rankactions_pending_site");
+          setSelectedSite(fallback);
+          localStorage.setItem("rankactions_selectedSite", fallback);
+          setSites([fallback]);
+          localStorage.setItem("rankactions_sites", JSON.stringify([fallback]));
+        });
 
       window.history.replaceState({}, "", window.location.pathname);
+      setScreen("dashboard");
+    } else if (saved) {
+      // Returning user — restore from localStorage and trust the saved userId
+      setUserId(saved);
+      setIsConnected(true);
+      if (savedSite && savedSite !== "mywebsite.com") setSelectedSite(savedSite);
+      if (savedSites) setSites(JSON.parse(savedSites));
       setScreen("dashboard");
     }
   }, []);
