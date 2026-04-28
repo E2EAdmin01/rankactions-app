@@ -2349,64 +2349,117 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         {activeTab==="SEO Opportunities" && <>
           <div className="section-head" style={{marginBottom:"1.25rem"}}>
             <div className="section-title"><Tip term="keyword">Keyword Opportunities</Tip></div>
-            <div className="section-sub">{siteData?`${seoRows.length} keywords from Search Console`:"Demo keywords"}</div>
+            <div className="section-sub">{
+              siteData?.keywords?.length >= 3
+                ? `${seoRows.length} keywords from Search Console`
+                : siteData
+                  ? "Search Console connected — waiting for data"
+                  : "Demo keywords"
+            }</div>
           </div>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead><tr><th><Tip term="keyword">Keyword</Tip></th><th><Tip term="position">Position</Tip></th><th><Tip term="impressions">Impressions/mo</Tip></th><th>What to do</th><th>Action</th></tr></thead>
-              <tbody>
-                {seoRows.map((row,i)=>{
-                  const isWriteAction = row.action==="write_blog"||row.action==="write_page";
-                  const btnLabel = row.action==="fix_title"   ? "✨ Fix title tag"
-                                 : row.action==="write_page"  ? "✍ Write page"
-                                 : "✍ Write blog post";
-                  const btnColor = row.action==="fix_title" ? "var(--blue)" : "var(--green)";
-                  return (
-                    <tr key={i}>
-                      <td style={{fontWeight:500}}>
-                        {row.kw}
-                        {row.opp&&<span className="td-opp">opp</span>}
-                      </td>
-                      <td className="td-mono" style={{color:row.pos<=10?"var(--amber)":"var(--text)"}}>#{row.pos}</td>
-                      <td className="td-mono" style={{color:"var(--text2)"}}>{row.vol}</td>
-                      <td style={{color:"var(--text2)",fontSize:"0.8rem"}}>{row.gap}</td>
-                      <td>
-                        {row.action==="fix_title" ? (
-                          // Title tag fix → opens AI fix modal
-                          <span className="td-link" style={{color:btnColor}} onClick={()=>openModal({
-                            id:`seo-${i}`, level:"medium", color:"#f5a623", label:"OPPORTUNITY", type:"SEO",
-                            title:`Improve ranking for "${row.kw}"`,
-                            desc:`Currently at position #${row.pos} with ${row.vol} impressions. ${row.gap}.`,
-                            m1:`Position: #${row.pos}`, m2:row.vol,
-                            field:"Title Tag & Page Content",
-                            current:`Not fully optimised for "${row.kw}"`,
-                            recommended:row.gap, metaDesc:null,
-                          })}>
-                            {btnLabel}
-                          </span>
-                        ) : isPro ? (
-                          // Pro user → go to content generator pre-filled
-                          <span className="td-link" style={{color:btnColor}} onClick={()=>{
-                            contentPresetRef.current = { kw:row.kw, biz:"", notes:`Targeting position #${row.pos} — currently getting ${row.vol} impressions/month` };
-                            setScreen("content");
-                          }}>
-                            {btnLabel}
-                          </span>
-                        ) : (
-                          // Free user → show upgrade nudge
-                          <span style={{display:"inline-flex",alignItems:"center",gap:".4rem"}}>
-                            <span className="td-link" style={{color:"var(--amber)",fontSize:".75rem"}} onClick={()=>setShowUpgrade(true)}>
-                              🔒 {btnLabel}
+          {siteData && (siteData.keywords?.length || 0) < 3 ? (
+            // GSC connected but no meaningful data yet — honest empty state
+            <div style={{
+              background:"var(--s1)",
+              border:"1px solid var(--border)",
+              borderRadius:12,
+              padding:"2rem",
+              textAlign:"left",
+              maxWidth:680,
+              margin:"0 auto",
+            }}>
+              <div style={{fontSize:"1.1rem",fontWeight:600,marginBottom:".5rem",color:"var(--text)"}}>
+                No keyword opportunities yet
+              </div>
+              <div style={{fontSize:".9rem",lineHeight:1.65,color:"var(--text2)",marginBottom:"1.25rem"}}>
+                Your site needs ~3-4 weeks of Google Search Console data before we can identify ranking opportunities. New sites and low-traffic pages typically have very few keywords ranking, so there's nothing for us to optimise yet.
+              </div>
+              <div style={{fontSize:".85rem",fontWeight:600,color:"var(--text)",marginBottom:".6rem"}}>
+                In the meantime, here's what to do:
+              </div>
+              <ul style={{listStyle:"none",padding:0,margin:0,display:"flex",flexDirection:"column",gap:".7rem"}}>
+                <li style={{display:"flex",alignItems:"flex-start",gap:".65rem",fontSize:".88rem",color:"var(--text2)",lineHeight:1.55}}>
+                  <span style={{color:"var(--green)",fontWeight:700,flexShrink:0}}>1.</span>
+                  <span>Run a <span className="td-link" style={{color:"var(--blue)"}} onClick={()=>setScreen("audit")}>Page Audit</span> on your homepage and key service pages — fix any critical issues so Google can crawl and index them properly.</span>
+                </li>
+                <li style={{display:"flex",alignItems:"flex-start",gap:".65rem",fontSize:".88rem",color:"var(--text2)",lineHeight:1.55}}>
+                  <span style={{color:"var(--green)",fontWeight:700,flexShrink:0}}>2.</span>
+                  <span>{isPro
+                    ? <>Use the <span className="td-link" style={{color:"var(--blue)"}} onClick={()=>setScreen("content")}>Content Generator</span> to publish your first piece of SEO-optimised content targeting a keyword you want to rank for.</>
+                    : <>Upgrade to Pro to use the Content Generator and publish SEO-optimised articles targeting keywords you want to rank for.</>
+                  }</span>
+                </li>
+                <li style={{display:"flex",alignItems:"flex-start",gap:".65rem",fontSize:".88rem",color:"var(--text2)",lineHeight:1.55}}>
+                  <span style={{color:"var(--green)",fontWeight:700,flexShrink:0}}>3.</span>
+                  <span>{isPro
+                    ? <>Open the <span className="td-link" style={{color:"var(--blue)"}} onClick={()=>setScreen("links")}>Link Building</span> tools to find directories, guest post targets and partnerships you can pursue manually while your organic data builds up.</>
+                    : <>Upgrade to Pro to access Link Building tools — find directories, guest post targets and partnerships you can pursue manually.</>
+                  }</span>
+                </li>
+                <li style={{display:"flex",alignItems:"flex-start",gap:".65rem",fontSize:".88rem",color:"var(--text2)",lineHeight:1.55}}>
+                  <span style={{color:"var(--green)",fontWeight:700,flexShrink:0}}>4.</span>
+                  <span>Submit your sitemap to Google Search Console and check back here weekly — the more data accumulates, the more useful these opportunities become.</span>
+                </li>
+              </ul>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr><th><Tip term="keyword">Keyword</Tip></th><th><Tip term="position">Position</Tip></th><th><Tip term="impressions">Impressions/mo</Tip></th><th>What to do</th><th>Action</th></tr></thead>
+                <tbody>
+                  {seoRows.map((row,i)=>{
+                    const isWriteAction = row.action==="write_blog"||row.action==="write_page";
+                    const btnLabel = row.action==="fix_title"   ? "✨ Fix title tag"
+                                   : row.action==="write_page"  ? "✍ Write page"
+                                   : "✍ Write blog post";
+                    const btnColor = row.action==="fix_title" ? "var(--blue)" : "var(--green)";
+                    return (
+                      <tr key={i}>
+                        <td style={{fontWeight:500}}>
+                          {row.kw}
+                          {row.opp&&<span className="td-opp">opp</span>}
+                        </td>
+                        <td className="td-mono" style={{color:row.pos<=10?"var(--amber)":"var(--text)"}}>#{row.pos}</td>
+                        <td className="td-mono" style={{color:"var(--text2)"}}>{row.vol}</td>
+                        <td style={{color:"var(--text2)",fontSize:"0.8rem"}}>{row.gap}</td>
+                        <td>
+                          {row.action==="fix_title" ? (
+                            // Title tag fix → opens AI fix modal
+                            <span className="td-link" style={{color:btnColor}} onClick={()=>openModal({
+                              id:`seo-${i}`, level:"medium", color:"#f5a623", label:"OPPORTUNITY", type:"SEO",
+                              title:`Improve ranking for "${row.kw}"`,
+                              desc:`Currently at position #${row.pos} with ${row.vol} impressions. ${row.gap}.`,
+                              m1:`Position: #${row.pos}`, m2:row.vol,
+                              field:"Title Tag & Page Content",
+                              current:`Not fully optimised for "${row.kw}"`,
+                              recommended:row.gap, metaDesc:null,
+                            })}>
+                              {btnLabel}
                             </span>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                          ) : isPro ? (
+                            // Pro user → go to content generator pre-filled
+                            <span className="td-link" style={{color:btnColor}} onClick={()=>{
+                              contentPresetRef.current = { kw:row.kw, biz:"", notes:`Targeting position #${row.pos} — currently getting ${row.vol} impressions/month` };
+                              setScreen("content");
+                            }}>
+                              {btnLabel}
+                            </span>
+                          ) : (
+                            // Free user → show upgrade nudge
+                            <span style={{display:"inline-flex",alignItems:"center",gap:".4rem"}}>
+                              <span className="td-link" style={{color:"var(--amber)",fontSize:".75rem"}} onClick={()=>setShowUpgrade(true)}>
+                                🔒 {btnLabel}
+                              </span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           {!isPro && (
             <div style={{marginTop:"1rem",background:"var(--adim)",border:"1px solid rgba(245,166,35,.2)",borderRadius:10,padding:"1rem 1.25rem",display:"flex",alignItems:"center",gap:"1rem",flexWrap:"wrap"}}>
               <span style={{fontSize:".875rem",color:"var(--amber)"}}>🔒 <strong>Write page</strong> and <strong>Write blog post</strong> actions require Pro — they open the AI content generator pre-filled with the keyword ready to go.</span>
