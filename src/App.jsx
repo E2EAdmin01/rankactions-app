@@ -3460,7 +3460,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
                   key={annotated ? "annotated" : "clean"}
                   srcDoc={sanitizeAiHtml(annotated ? buildAnnotated(output) : output)}
                   style={{width:"100%",minHeight:580,border:"none",background:"white",flex:1}}
-				  sandbox=""
+				  sandbox="allow-same-origin"
                   title="Article preview"
                 />
               </div>
