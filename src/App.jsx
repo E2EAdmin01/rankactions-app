@@ -1089,16 +1089,16 @@ export default function RankActions() {
       authFetch(`${WORKER_URL}/api/user/profile`)
         .then(r => r.json())
         .then(profile => {
-          if (!profile.found || !profile.userId) {
-            setDataError("Connection succeeded but profile sync didn't complete. Please refresh.");
-            return;
-          }
-		  
-		  console.log("[OAuth-return] profile fetched:", profile, "uid:", profile.userId, "found:", profile.found);
-          const uid = profile.userId;
-          setUserId(uid);
-          setIsConnected(true);
-          localStorage.setItem("rankactions_userId", uid);
+    if (!profile.found) {
+		setDataError("Connection succeeded but profile sync didn't complete. Please refresh.");
+		return;
+}
+
+		console.log("[OAuth-return] profile fetched:", profile, "uid:", profile.userId, "found:", profile.found);
+		const uid = profile.userId || user?.id;
+		setUserId(uid);
+		setIsConnected(true);
+		if (uid) localStorage.setItem("rankactions_userId", uid);
 
           return authFetch(`${WORKER_URL}/api/gsc-sites`)
             .then(r => r.json())
