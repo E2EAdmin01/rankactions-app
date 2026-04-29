@@ -3458,7 +3458,7 @@ IMPORTANT — Label internal links clearly so non-technical users know what they
                 </div>
                 <iframe
                   key={annotated ? "annotated" : "clean"}
-                  ref={el=>{ if(el){ const d=el.contentDocument||el.contentWindow?.document; if(d){d.open();d.write(sanitizeAiHtml(annotated ? buildAnnotated(output) : output));d.close();} } }}
+                  srcDoc={sanitizeAiHtml(annotated ? buildAnnotated(output) : output)}
                   style={{width:"100%",minHeight:580,border:"none",background:"white",flex:1}}
 				  sandbox=""
                   title="Article preview"
