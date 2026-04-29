@@ -5665,10 +5665,9 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
   // PAGE AUDIT
   // ─────────────────────────────────────────────────────────────
   const PageAudit = () => {
-    // Compute the URL the audit field should default to for the
-    // currently-selected site. Keeps the protocol + sc-domain: handling
-    // in one place so the initial value and the on-site-change reset
-    // can't drift apart.
+    // Compute the URL the audit field should default to for a given site.
+    // Centralises the protocol + sc-domain: handling so the initial value
+    // and the on-site-change reset can't drift apart.
     const urlForSite = (site) => {
       if (!site) return "";
       if (site.startsWith("sc-domain:")) return `https://${site.replace("sc-domain:","")}`;
@@ -5678,10 +5677,18 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
 
     const [url, setUrl] = useState(auditUrl || urlForSite(selectedSite));
 
-    // When the user switches sites in the global selector, reset the URL
-    // field to the new site and clear stale audit/perf results so the
-    // user can't accidentally read results from the previous site.
+    // Track which site this component last *observed* in state. Initialised
+    // to selectedSite so first mount is treated as a no-op — we only act
+    // when the site actually changes, never on initial render. Same pattern
+    // as RankTracker's loadedSite ref.
+    const observedSite = useRef(selectedSite);
+
     useEffect(() => {
+      if (observedSite.current === selectedSite) return;
+      observedSite.current = selectedSite;
+      // Site genuinely changed — point the URL field at the new site and
+      // clear stale audit/perf scores so the user can't accidentally read
+      // results from the previous site.
       setUrl(urlForSite(selectedSite));
       setAuditData(null);
       setPerfData(null);
