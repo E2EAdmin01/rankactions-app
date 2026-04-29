@@ -3118,6 +3118,19 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         ? `\nPREVIOUSLY GENERATED CONTENT (do NOT duplicate these topics or angles):\n${contentHistory.map(h => `- "${h.keyword}" (${h.date})`).join("\n")}\nWrite something genuinely different from the above — different angle, different subtopics, different structure.\n`
         : "";
 
+      // Normalise the site URL once. selectedSite can come in as
+      // "example.com", "https://example.com", "https://example.com/", or
+      // "sc-domain:example.com". We need a clean "https://example.com"
+      // (no trailing slash) to build consistent URLs without ending up
+      // with double-protocol bugs like "https://https://example.com//".
+      const siteBase = (() => {
+        let s = String(selectedSite || "")
+          .replace(/^sc-domain:/, "")
+          .replace(/^https?:\/\//, "")
+          .replace(/\/+$/, "");
+        return s ? `https://${s}` : "";
+      })();
+
       // Build the list of REAL pages on the user's site, sorted by traffic.
       // We pass these to Claude so internal links go somewhere real (no 404s).
       // Each page already includes the path; we strip the domain just in case and rebuild as a full URL.
@@ -3127,10 +3140,10 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         .slice(0, 8)
         .map(p => {
           const path = (p.page || "").replace(/^https?:\/\/[^/]+/, "") || "/";
-          return `https://${selectedSite}${path}`;
+          return `${siteBase}${path}`;
         });
       // Always include the homepage as a guaranteed-valid fallback
-      const homepageUrl = `https://${selectedSite}/`;
+      const homepageUrl = `${siteBase}/`;
       const linkPool = Array.from(new Set([homepageUrl, ...realPages]));
       const linkPoolContext = linkPool.length > 1
         ? `\nALLOWED INTERNAL LINKS — these are the ONLY URLs that exist on the client's site. You MUST link only to URLs from this list. Do NOT invent any other paths or you will create 404s:\n${linkPool.map(u => `- ${u}`).join("\n")}\n`
@@ -3168,7 +3181,7 @@ CSS to include in <style>:
 - Include Google Fonts link: https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=DM+Sans:wght@400;500;700&display=swap
 
 BUILD THIS STRUCTURE:
-1. HEAD: title tag (50-60 chars, keyword first), meta description (145-155 chars, include keyword), canonical URL (https://${selectedSite}/[keyword-slug]/), robots, Open Graph tags, JSON-LD Article schema, datePublished today, the Google Fonts link, and a <style> block with the CSS above
+1. HEAD: title tag (50-60 chars, keyword first), meta description (145-155 chars, include keyword), canonical URL (${siteBase}/[keyword-slug]/), robots, Open Graph tags, JSON-LD Article schema, datePublished today, the Google Fonts link, and a <style> block with the CSS above
 2. HEADER BAR: dark, with the two-tone "RankActions" wordmark on the left (white "Rank" + green "Actions", Barlow Condensed bold) and "Generated for ${displaySite(selectedSite)}" on the right in small cream text
 3. HERO SECTION: H1 containing exact keyword "${kw.trim()}", subtitle, author, date, read time
 4. ARTICLE BODY:
