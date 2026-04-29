@@ -5665,7 +5665,28 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
   // PAGE AUDIT
   // ─────────────────────────────────────────────────────────────
   const PageAudit = () => {
-    const [url, setUrl] = useState(auditUrl || (selectedSite.startsWith("sc-domain:")?`https://${selectedSite.replace("sc-domain:","")}`:selectedSite.startsWith("http")?selectedSite:`https://${selectedSite}`));
+    // Compute the URL the audit field should default to for the
+    // currently-selected site. Keeps the protocol + sc-domain: handling
+    // in one place so the initial value and the on-site-change reset
+    // can't drift apart.
+    const urlForSite = (site) => {
+      if (!site) return "";
+      if (site.startsWith("sc-domain:")) return `https://${site.replace("sc-domain:","")}`;
+      if (site.startsWith("http")) return site;
+      return `https://${site}`;
+    };
+
+    const [url, setUrl] = useState(auditUrl || urlForSite(selectedSite));
+
+    // When the user switches sites in the global selector, reset the URL
+    // field to the new site and clear stale audit/perf results so the
+    // user can't accidentally read results from the previous site.
+    useEffect(() => {
+      setUrl(urlForSite(selectedSite));
+      setAuditData(null);
+      setPerfData(null);
+      setAuditUrl("");
+    }, [selectedSite]);
 
     const runAudit = async () => {
       if (!url.trim()) return;
