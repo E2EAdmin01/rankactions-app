@@ -37,7 +37,7 @@
   # ─── HSTS (1 year, include subdomains, eligible for preload) ──
   # WARNING: only enable preload after you've confirmed every
   # subdomain serves HTTPS. Submit at https://hstspreload.org/
-  Strict-Transport-Security: max-age=300; includeSubDomains
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
   # ─── Referrer Policy ────────────────────────────────────────
   Referrer-Policy: strict-origin-when-cross-origin
   # ─── Permissions Policy (lock down powerful APIs) ───────────
