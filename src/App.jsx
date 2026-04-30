@@ -6657,6 +6657,104 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
     };
     const selectedSeedKeywords = () => allSeedKeywords().filter(kw => isKwSelected(kw));
 
+    // Phase 3 — DataForSEO enrichment. Takes the user's selected seed
+    // keywords from Phase 2 and pulls real search volume + difficulty.
+    // Costs 1 quota credit per session (max 50 keywords). Pro+ only.
+    const [enrichingPh3, setEnrichingPh3] = useState(false);
+    const [enrichErrorPh3, setEnrichErrorPh3] = useState(null);
+
+    // Lightweight normaliser — matches worker's normaliseKeyword. Used
+    // for matching response keywords back to seed bucket origins so we
+    // can colour-code by intent in the result UI.
+    const normaliseKw = (s) => String(s || "").toLowerCase().trim().replace(/\s+/g, " ");
+
+    const fetchKeywordData = async () => {
+      const keywords = selectedSeedKeywords();
+      if (keywords.length === 0) {
+        setEnrichErrorPh3("No keywords selected — go back and select at least one.");
+        return;
+      }
+      if (keywords.length > 50) {
+        setEnrichErrorPh3(`You've selected ${keywords.length} keywords. The maximum per session is 50 — please go back and deselect some.`);
+        return;
+      }
+      setEnrichingPh3(true);
+      setEnrichErrorPh3(null);
+      try {
+        const res = await authFetch(`${WORKER_URL}/api/keyword-data`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords, country: state.profile.country }),
+        });
+        const data = await res.json();
+
+        if (res.status === 402) {
+          if (data.upgrade) {
+            setEnrichErrorPh3("Real keyword data is a Pro feature. Upgrade your plan to continue.");
+          } else {
+            setEnrichErrorPh3(`Monthly quota reached (${data.used}/${data.limit}). Resets next month.`);
+          }
+          setEnrichingPh3(false);
+          return;
+        }
+        if (!res.ok) {
+          setEnrichErrorPh3(data?.error || "Couldn't fetch keyword data — please try again.");
+          setEnrichingPh3(false);
+          return;
+        }
+
+        setState(s => ({
+          ...s,
+          enrichedKeywords: {
+            list: Array.isArray(data.keywords) ? data.keywords : [],
+            fetchedAt: new Date().toISOString(),
+            quotaUsed:  data.quotaUsed  ?? null,
+            quotaLimit: data.quotaLimit ?? null,
+            country: state.profile.country,
+            deselected: [],
+          },
+        }));
+
+        if (data.partial) {
+          setEnrichErrorPh3(`Some data unavailable — showing cached results where possible. Reason: ${data.reason || "unknown"}`);
+        }
+      } catch (err) {
+        setEnrichErrorPh3("Couldn't reach the server — please check your connection.");
+      }
+      setEnrichingPh3(false);
+    };
+
+    // Phase 3 selection — separate deselected list so users can refine
+    // based on real data without losing their Phase 2 reasoning
+    const isPh3Selected = (kw) => !!state.enrichedKeywords && !state.enrichedKeywords.deselected.includes(kw);
+    const togglePh3Kw = (kw) => {
+      setState(s => {
+        const ds = s.enrichedKeywords?.deselected || [];
+        return {
+          ...s,
+          enrichedKeywords: {
+            ...s.enrichedKeywords,
+            deselected: ds.includes(kw) ? ds.filter(x => x !== kw) : [...ds, kw],
+          },
+        };
+      });
+    };
+    const ph3SelectedCount = () => {
+      if (!state.enrichedKeywords?.list) return 0;
+      return state.enrichedKeywords.list.filter(item => isPh3Selected(item.keyword)).length;
+    };
+
+    // Map a keyword to its Phase 2 intent bucket (for colour-coding rows)
+    const bucketOf = (keyword) => {
+      const b = state.seedKeywords?.buckets;
+      if (!b) return null;
+      const target = normaliseKw(keyword);
+      if ((b.informational || []).some(k => normaliseKw(k) === target)) return "informational";
+      if ((b.commercial    || []).some(k => normaliseKw(k) === target)) return "commercial";
+      if ((b.navigational  || []).some(k => normaliseKw(k) === target)) return "navigational";
+      return null;
+    };
+
     // Phase 1 validation — keep thresholds modest so users aren't blocked
     // by perfectionism, strict enough to give the AI useful signal
     const p = state.profile;
@@ -7140,8 +7238,272 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           </>
         )}
 
-        {/* ── Steps 3-6: placeholder until built ─────────────────── */}
-        {state.currentStep > 2 && (
+        {/* ── Step 3: Real Keyword Data (DataForSEO) ─────────────── */}
+        {state.currentStep === 3 && (() => {
+          const seedSelected = selectedSeedKeywords();
+          const tooMany = seedSelected.length > 50;
+
+          // Empty state — no DFS data yet
+          if (!state.enrichedKeywords) {
+            // Free/Starter — show locked card
+            if (!isPro) {
+              return (
+                <>
+                  <div style={{ background: "var(--s1)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.75rem 1.5rem", textAlign: "center" }}>
+                    <div style={{ fontSize: "2.5rem", marginBottom: ".75rem" }}>🔒</div>
+                    <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text)", marginBottom: ".5rem" }}>
+                      Real keyword data is a Pro feature
+                    </div>
+                    <div style={{ fontSize: ".85rem", color: "var(--text2)", maxWidth: 480, margin: "0 auto 1.25rem", lineHeight: 1.6 }}>
+                      Upgrade to Pro to pull real monthly search volume and difficulty scores from DataForSEO. You'll see exactly which of your seed keywords are worth targeting — and which to skip.
+                    </div>
+                    <button onClick={() => setShowUpgrade(true)}
+                      style={{ background: "var(--green)", color: "#000", border: "none", borderRadius: 8, padding: ".75rem 1.5rem", fontSize: ".88rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+                      ✨ Upgrade to Pro
+                    </button>
+                  </div>
+                  <div style={{ marginTop: "1.25rem", display: "flex", gap: ".6rem", flexWrap: "wrap" }}>
+                    <button onClick={() => goToStep(2)}
+                      style={{ background: "var(--s2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: ".75rem 1.1rem", fontSize: ".85rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", flex: "0 0 auto" }}>
+                      ← Back
+                    </button>
+                    <button onClick={() => setScreen("dashboard")}
+                      style={{ flex: "1 1 200px", background: "var(--s2)", color: "var(--text2)", border: "1px solid var(--border)", borderRadius: 8, padding: ".75rem 1.1rem", fontSize: ".85rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                      Save & return to dashboard
+                    </button>
+                  </div>
+                </>
+              );
+            }
+
+            // Pro+ — show pre-fetch card with quota warning
+            return (
+              <>
+                <div style={{ background: "var(--s1)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.75rem 1.5rem" }}>
+                  <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+                    <div style={{ fontSize: "2.5rem", marginBottom: ".75rem" }}>📊</div>
+                    <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text)", marginBottom: ".5rem" }}>
+                      Get real keyword data
+                    </div>
+                    <div style={{ fontSize: ".85rem", color: "var(--text2)", maxWidth: 500, margin: "0 auto", lineHeight: 1.6 }}>
+                      We'll look up monthly search volume and difficulty from DataForSEO for the <strong style={{ color: "var(--text)" }}>{seedSelected.length}</strong> keyword{seedSelected.length === 1 ? "" : "s"} you've selected.
+                    </div>
+                  </div>
+
+                  {/* Quota warning */}
+                  <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "1rem", marginBottom: "1rem", fontSize: ".82rem", color: "var(--text2)", lineHeight: 1.55 }}>
+                    <div style={{ fontWeight: 700, color: "var(--text)", marginBottom: ".3rem" }}>
+                      ⚠ This will use 1 DataForSEO session
+                    </div>
+                    Your plan includes monthly DataForSEO sessions for keyword research. Each batch up to 50 keywords counts as 1 session. Cached keywords don't count.
+                  </div>
+
+                  {tooMany && (
+                    <div style={{ background: "var(--adim)", border: "1px solid rgba(245,166,35,.3)", borderRadius: 8, padding: ".75rem 1rem", color: "var(--amber)", fontSize: ".82rem", marginBottom: "1rem", lineHeight: 1.5 }}>
+                      You've selected {seedSelected.length} keywords. The maximum is 50 per session — go back to Step 2 and deselect some before continuing.
+                    </div>
+                  )}
+
+                  {enrichErrorPh3 && (
+                    <div style={{ background: "var(--rdim)", border: "1px solid rgba(240,62,95,.3)", borderRadius: 8, padding: ".75rem 1rem", color: "var(--red)", fontSize: ".82rem", marginBottom: "1rem", lineHeight: 1.5 }}>
+                      {enrichErrorPh3}
+                    </div>
+                  )}
+
+                  <button onClick={fetchKeywordData} disabled={enrichingPh3 || tooMany || seedSelected.length === 0}
+                    style={{
+                      width: "100%",
+                      background: enrichingPh3 || tooMany || seedSelected.length === 0 ? "var(--s2)" : "var(--green)",
+                      color: enrichingPh3 || tooMany || seedSelected.length === 0 ? "var(--text3)" : "#000",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: ".9rem 1.25rem",
+                      fontSize: ".9rem",
+                      fontWeight: 700,
+                      cursor: enrichingPh3 ? "wait" : tooMany || seedSelected.length === 0 ? "not-allowed" : "pointer",
+                      fontFamily: "inherit",
+                    }}>
+                    {enrichingPh3 ? "📊 Fetching keyword data… (5-15s)" : `📊 Get keyword data for ${seedSelected.length} keyword${seedSelected.length === 1 ? "" : "s"}`}
+                  </button>
+                </div>
+
+                <div style={{ marginTop: "1.25rem", display: "flex", gap: ".6rem", flexWrap: "wrap" }}>
+                  <button onClick={() => goToStep(2)} disabled={enrichingPh3}
+                    style={{ background: "var(--s2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: ".75rem 1.1rem", fontSize: ".85rem", fontWeight: 600, cursor: enrichingPh3 ? "wait" : "pointer", fontFamily: "inherit", flex: "0 0 auto" }}>
+                    ← Back
+                  </button>
+                </div>
+              </>
+            );
+          }
+
+          // Result state — DFS data loaded
+          const list = state.enrichedKeywords.list || [];
+          // Sort: keywords with data first (by volume desc), no-data last
+          const sorted = [...list].sort((a, b) => {
+            const av = a.volume == null ? -1 : a.volume;
+            const bv = b.volume == null ? -1 : b.volume;
+            return bv - av;
+          });
+          const withData = sorted.filter(k => k.volume != null || k.competitionIndex != null);
+          const withoutData = sorted.filter(k => k.volume == null && k.competitionIndex == null);
+
+          const handleRefresh = () => {
+            if (window.confirm("Refresh will use another DataForSEO session and reset your selections here. Continue?")) {
+              setState(s => ({ ...s, enrichedKeywords: null }));
+              // Schedule the fetch after state update flushes
+              setTimeout(() => fetchKeywordData(), 0);
+            }
+          };
+
+          const BUCKET_COLORS = {
+            informational: { color: "var(--blue)",  label: "Info" },
+            commercial:    { color: "var(--amber)", label: "Comm" },
+            navigational:  { color: "var(--green)", label: "Trans" },
+          };
+
+          const renderRow = (item) => {
+            const sel = isPh3Selected(item.keyword);
+            const vol = item.volume;
+            const comp = item.competitionIndex;
+            const compLabel = comp == null ? "—" : comp < 33 ? "Easy" : comp < 66 ? "Medium" : "Hard";
+            const compColor = comp == null ? "var(--text3)" : comp < 33 ? "var(--green)" : comp < 66 ? "var(--amber)" : "var(--red)";
+            const bucket = bucketOf(item.keyword);
+            const bMeta = bucket ? BUCKET_COLORS[bucket] : null;
+
+            return (
+              <div key={item.keyword}
+                onClick={() => togglePh3Kw(item.keyword)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: ".75rem",
+                  padding: ".7rem .9rem",
+                  background: sel ? "var(--gdim)" : "var(--bg)",
+                  border: sel ? "1px solid rgba(15,219,138,.3)" : "1px solid var(--border)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  transition: "background .12s, border-color .12s",
+                  marginBottom: ".4rem",
+                }}>
+                <span style={{ fontSize: ".95rem", lineHeight: 1, opacity: sel ? 1 : .4, color: sel ? "var(--green)" : "var(--text3)", flexShrink: 0, width: 14, textAlign: "center" }}>
+                  {sel ? "✓" : "○"}
+                </span>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: ".5rem", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: ".84rem", color: sel ? "var(--text)" : "var(--text2)", fontWeight: 500, wordBreak: "break-word" }}>
+                    {item.keyword}
+                  </span>
+                  {bMeta && (
+                    <span style={{ fontSize: ".62rem", padding: ".1rem .4rem", borderRadius: 4, background: "transparent", border: `1px solid ${bMeta.color}`, color: bMeta.color, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em", flexShrink: 0 }}>
+                      {bMeta.label}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: ".75rem", fontFamily: "var(--mono)", color: vol == null ? "var(--text3)" : "var(--text)", flexShrink: 0, minWidth: 70, textAlign: "right" }}>
+                  {vol == null ? "—" : `${vol.toLocaleString()}/mo`}
+                </div>
+                <div style={{ fontSize: ".72rem", fontWeight: 600, color: compColor, flexShrink: 0, minWidth: 52, textAlign: "right" }}>
+                  {compLabel}
+                </div>
+              </div>
+            );
+          };
+
+          const totalSelected = ph3SelectedCount();
+
+          return (
+            <>
+              {/* Summary header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem", flexWrap: "wrap", gap: ".75rem", padding: ".75rem 1rem", background: "var(--s1)", border: "1px solid var(--border)", borderRadius: 10 }}>
+                <div>
+                  <div style={{ fontSize: ".88rem", fontWeight: 700, color: "var(--text)" }}>
+                    Real keyword data
+                  </div>
+                  <div style={{ fontSize: ".74rem", color: "var(--text2)", marginTop: ".15rem" }}>
+                    <strong style={{ color: "var(--green)" }}>{totalSelected}</strong> of {list.length} selected
+                    {state.enrichedKeywords.quotaLimit != null && (
+                      <> · Quota: {state.enrichedKeywords.quotaUsed}/{state.enrichedKeywords.quotaLimit} this month</>
+                    )}
+                  </div>
+                </div>
+                <button onClick={handleRefresh} disabled={enrichingPh3}
+                  style={{ background: "var(--s2)", color: "var(--text2)", border: "1px solid var(--border)", borderRadius: 7, padding: ".45rem .85rem", fontSize: ".75rem", fontWeight: 600, cursor: enrichingPh3 ? "wait" : "pointer", fontFamily: "inherit" }}>
+                  {enrichingPh3 ? "Refreshing…" : "↻ Refresh data"}
+                </button>
+              </div>
+
+              {enrichErrorPh3 && (
+                <div style={{ background: "var(--adim)", border: "1px solid rgba(245,166,35,.3)", borderRadius: 8, padding: ".75rem 1rem", color: "var(--amber)", fontSize: ".82rem", marginBottom: "1rem", lineHeight: 1.5 }}>
+                  {enrichErrorPh3}
+                </div>
+              )}
+
+              {/* Column header strip */}
+              <div style={{ display: "flex", alignItems: "center", gap: ".75rem", padding: "0 .9rem .35rem", fontSize: ".68rem", color: "var(--text3)", textTransform: "uppercase", letterSpacing: ".08em", fontWeight: 700 }}>
+                <span style={{ width: 14, flexShrink: 0 }}> </span>
+                <span style={{ flex: 1 }}>Keyword</span>
+                <span style={{ minWidth: 70, textAlign: "right" }}>Volume</span>
+                <span style={{ minWidth: 52, textAlign: "right" }}>Difficulty</span>
+              </div>
+
+              {/* Rows with data */}
+              <div style={{ marginBottom: withoutData.length > 0 ? "1rem" : 0 }}>
+                {withData.map(renderRow)}
+              </div>
+
+              {/* No-data section, collapsed visually */}
+              {withoutData.length > 0 && (
+                <div style={{ marginBottom: "1rem" }}>
+                  <div style={{ fontSize: ".72rem", color: "var(--text3)", padding: "0 .9rem .4rem", fontWeight: 600 }}>
+                    No data available ({withoutData.length})
+                  </div>
+                  {withoutData.map(renderRow)}
+                </div>
+              )}
+
+              {/* Insight footer — interpretation help */}
+              <div style={{ background: "rgba(77,123,255,.06)", border: "1px solid rgba(77,123,255,.2)", borderRadius: 10, padding: "1rem 1.1rem", marginBottom: "1rem" }}>
+                <div style={{ fontSize: ".78rem", fontWeight: 700, color: "var(--blue)", marginBottom: ".4rem" }}>
+                  💡 How to read this
+                </div>
+                <div style={{ fontSize: ".77rem", color: "var(--text2)", lineHeight: 1.6 }}>
+                  Sub-100 volumes are common for niche B2B searches and are still worth targeting if intent is high. "Easy" reflects Google Ads competition, not organic SEO difficulty — treat it as directional. Keep keywords with no data only if you have strong reason to think they convert.
+                </div>
+              </div>
+
+              {/* Navigation */}
+              <div style={{ marginTop: "1.25rem", display: "flex", gap: ".6rem", flexWrap: "wrap" }}>
+                <button onClick={() => goToStep(2)}
+                  style={{ background: "var(--s2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: ".75rem 1.1rem", fontSize: ".85rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", flex: "0 0 auto" }}>
+                  ← Back
+                </button>
+                <button onClick={() => goToStep(4)} disabled={totalSelected < 1}
+                  style={{
+                    flex: "1 1 200px",
+                    background: totalSelected < 1 ? "var(--s2)" : "var(--green)",
+                    color: totalSelected < 1 ? "var(--text3)" : "#000",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: ".75rem 1.1rem",
+                    fontSize: ".85rem",
+                    fontWeight: 700,
+                    cursor: totalSelected < 1 ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                  }}>
+                  Continue with {totalSelected} keyword{totalSelected === 1 ? "" : "s"} →
+                </button>
+              </div>
+              {totalSelected < 1 && (
+                <div style={{ marginTop: ".75rem", fontSize: ".75rem", color: "var(--text3)", textAlign: "center" }}>
+                  Select at least one keyword to continue.
+                </div>
+              )}
+            </>
+          );
+        })()}
+
+        {/* ── Steps 4-6: placeholder until built ─────────────────── */}
+        {state.currentStep > 3 && (
           <>
             <div style={{ background: "var(--s1)", border: "1px solid var(--border)", borderRadius: 12, padding: "2.5rem 1.5rem", textAlign: "center" }}>
               <div style={{ fontSize: "2rem", marginBottom: ".75rem" }}>🚧</div>
