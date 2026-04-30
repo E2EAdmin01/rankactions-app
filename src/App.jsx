@@ -4887,6 +4887,25 @@ Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the
     const cardStyle = { background: "var(--card)", border: "1px solid var(--b2)", borderRadius: 12, padding: "1.25rem" };
     const headStyle = { fontSize: ".72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--text3)", marginBottom: ".75rem" };
 
+    // Content-type metadata for badges on pillar/cluster cards.
+    // These fields only exist on wizard-generated strategies but the
+    // rendering is a no-op when the field is absent — backwards-compatible
+    // with strategies created via the existing AI suggestion flow.
+    const CONTENT_TYPE_META = {
+      "service-page": { icon: "🛠️", label: "Service page" },
+      "landing-page": { icon: "🎯", label: "Landing page" },
+      "blog":         { icon: "📝", label: "Blog post" },
+      "guide":        { icon: "📚", label: "Guide" },
+      "comparison":   { icon: "⚖️", label: "Comparison" },
+      "listicle":     { icon: "📋", label: "Listicle" },
+      "how-to":       { icon: "🧭", label: "How-to" },
+    };
+    const PHASE_META = {
+      "now":   { icon: "🟢", label: "Build first" },
+      "soon":  { icon: "🔵", label: "Build next" },
+      "later": { icon: "🟡", label: "Build later" },
+    };
+
     // Progress stats
     const progress = strategy ? {
       total: strategy.clusters.length + 1,
@@ -5027,6 +5046,34 @@ Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the
               </div>
             ) : (
               <>
+                {/* Wizard-source banner — only shown for strategies created by the
+                    Starting Out wizard. Subtle but persistent so users understand
+                    the origin of this plan and that they can re-run the wizard. */}
+                {strategy.source === "wizard" && (
+                  <div style={{
+                    background: "rgba(15,219,138,.06)",
+                    border: "1px solid rgba(15,219,138,.2)",
+                    borderRadius: 8,
+                    padding: ".55rem .85rem",
+                    fontSize: ".75rem",
+                    color: "var(--text2)",
+                    marginBottom: ".75rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: ".5rem",
+                    flexWrap: "wrap",
+                  }}>
+                    <span>📋</span>
+                    <span style={{ fontWeight: 600, color: "var(--green)" }}>From your Starting Out wizard</span>
+                    <span style={{ color: "var(--text3)" }}>·</span>
+                    <span style={{ color: "var(--text2)", flex: 1, minWidth: 0 }}>Content plan based on your business profile and competitor analysis</span>
+                    <button onClick={() => setScreen("startingOut")}
+                      style={{ background: "transparent", color: "var(--green)", border: "1px solid rgba(15,219,138,.3)", borderRadius: 6, padding: ".2rem .55rem", fontSize: ".7rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", flexShrink: 0 }}>
+                      Open wizard
+                    </button>
+                  </div>
+                )}
+
                 {/* Progress bar */}
                 <div style={{ ...cardStyle, marginBottom: "1rem" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: ".75rem" }}>
@@ -5062,6 +5109,12 @@ Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the
                     Target keyword: "{strategy.pillar.keyword}"
                     <KeywordBadge keyword={strategy.pillar.keyword} />
                     · {strategy.pillar.wordCount} words recommended
+                    {strategy.pillar.contentType && CONTENT_TYPE_META[strategy.pillar.contentType] && (
+                      <> · <span style={{ color: "var(--text2)" }}>{CONTENT_TYPE_META[strategy.pillar.contentType].icon} {CONTENT_TYPE_META[strategy.pillar.contentType].label}</span></>
+                    )}
+                    {strategy.pillar.phase && PHASE_META[strategy.pillar.phase] && (
+                      <> · <span style={{ color: "var(--text3)", fontSize: ".74rem" }}>{PHASE_META[strategy.pillar.phase].icon} {PHASE_META[strategy.pillar.phase].label}</span></>
+                    )}
                   </div>
                   {strategy.pillar.description && <div style={{ fontSize: ".78rem", color: "var(--text3)", lineHeight: 1.5, marginBottom: ".75rem" }}>{strategy.pillar.description}</div>}
                   <div style={{ display: "flex", gap: ".5rem" }}>
@@ -5132,6 +5185,12 @@ Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the
                           "{c.keyword}"
                           <KeywordBadge keyword={c.keyword} />
                           · {c.wordCount} words
+                          {c.contentType && CONTENT_TYPE_META[c.contentType] && (
+                            <> · <span style={{ color: "var(--text2)" }}>{CONTENT_TYPE_META[c.contentType].icon} {CONTENT_TYPE_META[c.contentType].label}</span></>
+                          )}
+                          {c.phase && PHASE_META[c.phase] && (
+                            <> · <span style={{ color: "var(--text3)" }}>{PHASE_META[c.phase].icon} {PHASE_META[c.phase].label}</span></>
+                          )}
                         </div>
                         {c.angle && <div style={{ fontSize: ".75rem", color: "var(--text2)", marginTop: ".2rem" }}>{c.angle}</div>}
                         {c.internalLink && <div style={{ fontSize: ".72rem", color: "var(--blue)", marginTop: ".25rem" }}>🔗 {c.internalLink}</div>}
@@ -7061,14 +7120,103 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
       setGeneratingPh6(false);
     };
 
-    // Mark wizard as complete and return to dashboard
+    // Mark wizard as complete and hand off to Strategy Planner.
+    // Converts the AI-generated roadmap into the Strategy Planner's
+    // pillar+clusters shape so users have a single home for their plan.
     const completeWizard = () => {
+      const items = state.roadmap?.items || [];
+
+      // Edge case: no roadmap → just mark complete and exit
+      if (items.length === 0) {
+        setState(s => ({ ...s, completed: true, completedAt: new Date().toISOString() }));
+        setScreen("dashboard");
+        return;
+      }
+
+      // Backup any existing strategy to history before replacing
+      try {
+        const existing = JSON.parse(localStorage.getItem(`ra_strategy_${selectedSite}`) || "null");
+        if (existing && (existing.clusters || []).length > 0) {
+          const histKey = `ra_strategy_history_${selectedSite}`;
+          const hist = JSON.parse(localStorage.getItem(histKey) || "[]");
+          hist.push({
+            topic: existing.topic,
+            date: existing.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
+            clusters: (existing.clusters || []).map(c => c.keyword),
+          });
+          localStorage.setItem(histKey, JSON.stringify(hist.slice(-20)));
+        }
+      } catch {}
+
+      // Pick the pillar item — prefer authoritative content with broad scope
+      // Priority: must-target guide > any guide > must-target > first item
+      const pillarItem =
+        items.find(i => i.contentType === "guide" && i.tier === "must") ||
+        items.find(i => i.contentType === "guide") ||
+        items.find(i => i.tier === "must") ||
+        items[0];
+
+      // Order remaining items by phase, then tier, then title
+      const phaseOrder = { now: 0, soon: 1, later: 2 };
+      const tierOrder  = { must: 0, opportunity: 1, "long-shot": 2 };
+      const remaining = items.filter(i => i !== pillarItem).sort((a, b) => {
+        const ap = phaseOrder[a.phase] ?? 99;
+        const bp = phaseOrder[b.phase] ?? 99;
+        if (ap !== bp) return ap - bp;
+        const at = tierOrder[a.tier] ?? 99;
+        const bt = tierOrder[b.tier] ?? 99;
+        if (at !== bt) return at - bt;
+        return (a.title || a.keyword).localeCompare(b.title || b.keyword);
+      });
+
+      const newStrategy = {
+        topic: state.profile.businessName
+          ? `${state.profile.businessName} — content roadmap`
+          : "Starting Out content roadmap",
+        reasoning: state.roadmap.summary || "Generated from Starting Out wizard",
+        createdAt: new Date().toISOString(),
+        source: "wizard",
+        wizardCompletedAt: new Date().toISOString(),
+        pillar: {
+          keyword: pillarItem.keyword,
+          title: pillarItem.title || pillarItem.keyword,
+          description: pillarItem.angle || "",
+          wordCount: pillarItem.wordCount || 1500,
+          status: "not_started",
+          url: "",
+          // Wizard metadata — optional, won't affect non-wizard strategies
+          contentType: pillarItem.contentType || "guide",
+          phase:       pillarItem.phase || "now",
+          tier:        pillarItem.tier || "must",
+        },
+        clusters: remaining.map((item, i) => ({
+          id: `cluster-${i}`,
+          keyword: item.keyword,
+          title: item.title || item.keyword,
+          description: item.angle || "",
+          wordCount: item.wordCount || 1200,
+          status: "not_started",
+          url: "",
+          angle: item.angle || "",
+          contentType: item.contentType || "blog",
+          phase:       item.phase || "soon",
+          tier:        item.tier || "opportunity",
+        })),
+      };
+
+      // Save the strategy and mark wizard complete
+      try {
+        localStorage.setItem(`ra_strategy_${selectedSite}`, JSON.stringify(newStrategy));
+      } catch {}
+
       setState(s => ({
         ...s,
         completed: true,
         completedAt: new Date().toISOString(),
       }));
-      setScreen("dashboard");
+
+      // Hand off to Strategy Planner
+      setScreen("strategy");
     };
 
     // Phase 1 validation — keep thresholds modest so users aren't blocked
@@ -8783,7 +8931,7 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                   🎉 You've built your SEO foundation
                 </div>
                 <div style={{ fontSize: ".8rem", color: "var(--text2)", lineHeight: 1.6 }}>
-                  Start with the "Build first" pages — they're your highest-priority content. As Google starts indexing them, you'll begin seeing real GSC data, and the rest of RankActions (Strategy Planner, Content Generator, Page Audit) becomes more powerful. Your roadmap is saved here — come back any time.
+                  Your roadmap is ready. Hit "Save to Strategy Planner" to load it as your active content plan — you'll be able to track status, update URLs once published, and click through to write each piece in the Content Generator. The wizard stays available so you can come back any time to refine.
                 </div>
               </div>
 
@@ -8806,7 +8954,7 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                     cursor: "pointer",
                     fontFamily: "inherit",
                   }}>
-                  ✓ Complete setup
+                  ✓ Save to Strategy Planner →
                 </button>
               </div>
             </>
