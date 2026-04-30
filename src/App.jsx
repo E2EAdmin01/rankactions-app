@@ -7011,6 +7011,66 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
       return state.targets.list.filter(t => isTargetSelected(t.keyword)).length;
     };
 
+    // Phase 6 — Content Roadmap (AI synthesis)
+    const [generatingPh6, setGeneratingPh6] = useState(false);
+    const [generateErrorPh6, setGenerateErrorPh6] = useState(null);
+
+    // Build the list of selected targets to send to the AI
+    const selectedTargets = () => {
+      if (!state.targets?.list) return [];
+      return state.targets.list.filter(t => isTargetSelected(t.keyword));
+    };
+
+    const generateContentRoadmap = async () => {
+      const targets = selectedTargets();
+      if (targets.length === 0) {
+        setGenerateErrorPh6("No targets selected — go back and pick at least one.");
+        return;
+      }
+      setGeneratingPh6(true);
+      setGenerateErrorPh6(null);
+      try {
+        const res = await authFetch(`${WORKER_URL}/api/starting-out/content-roadmap`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            profile: state.profile,
+            country: state.profile.country,
+            targets,
+            siteUrl: selectedSite || "",
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setGenerateErrorPh6(data?.error || "Couldn't generate roadmap — please try again.");
+          setGeneratingPh6(false);
+          return;
+        }
+        setState(s => ({
+          ...s,
+          roadmap: {
+            summary: data.summary || "",
+            items: Array.isArray(data.items) ? data.items : [],
+            generatedAt: data.generatedAt,
+            provider: data.provider,
+          },
+        }));
+      } catch (err) {
+        setGenerateErrorPh6("Couldn't reach the server — please check your connection.");
+      }
+      setGeneratingPh6(false);
+    };
+
+    // Mark wizard as complete and return to dashboard
+    const completeWizard = () => {
+      setState(s => ({
+        ...s,
+        completed: true,
+        completedAt: new Date().toISOString(),
+      }));
+      setScreen("dashboard");
+    };
+
     // Phase 1 validation — keep thresholds modest so users aren't blocked
     // by perfectionism, strict enough to give the AI useful signal
     const p = state.profile;
@@ -8440,57 +8500,318 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           );
         })()}
 
-        {/* ── Step 6: placeholder until built ─────────────────────── */}
-        {state.currentStep > 5 && (
-          <>
-            <div style={{ background: "var(--s1)", border: "1px solid var(--border)", borderRadius: 12, padding: "2.5rem 1.5rem", textAlign: "center" }}>
-              <div style={{ fontSize: "2rem", marginBottom: ".75rem" }}>🚧</div>
-              <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text)", marginBottom: ".5rem" }}>
-                {STEPS[state.currentStep - 1].title} — coming soon
-              </div>
-              <div style={{ fontSize: ".82rem", color: "var(--text2)", maxWidth: 440, margin: "0 auto", lineHeight: 1.6, marginBottom: "1.25rem" }}>
-                {STEPS[state.currentStep - 1].sub}. Your business profile has been saved — when this step is built, you'll be able to pick up right here.
-              </div>
-              <div style={{ display: "inline-flex", gap: ".5rem", padding: ".6rem .9rem", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, fontSize: ".75rem", color: "var(--text2)" }}>
-                <span style={{ color: "var(--green)" }}>✓</span>
-                <span>Profile saved for <strong style={{ color: "var(--text)" }}>{p.businessName || "this site"}</strong></span>
-              </div>
-            </div>
+        {/* ── Step 6: Content Roadmap (Final Step) ────────────────── */}
+        {state.currentStep === 6 && (() => {
+          const targets = selectedTargets();
 
-            <div style={{ marginTop: "1.25rem", display: "flex", gap: ".6rem", flexWrap: "wrap" }}>
-              <button onClick={() => goToStep(state.currentStep - 1)}
-                style={{
-                  background: "var(--s2)",
-                  color: "var(--text)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: ".75rem 1.1rem",
-                  fontSize: ".85rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  flex: "0 0 auto",
-                }}>
-                ← Back
-              </button>
-              <button onClick={() => setScreen("dashboard")}
-                style={{
-                  flex: "1 1 200px",
-                  background: "var(--s2)",
-                  color: "var(--text2)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  padding: ".75rem 1.1rem",
-                  fontSize: ".85rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}>
-                Save & return to dashboard
-              </button>
-            </div>
-          </>
-        )}
+          // Empty state — no roadmap generated yet
+          if (!state.roadmap) {
+            // Edge case — no targets to roadmap
+            if (targets.length === 0) {
+              return (
+                <>
+                  <div style={{ background: "var(--s1)", border: "1px solid var(--border)", borderRadius: 12, padding: "2rem 1.5rem", textAlign: "center" }}>
+                    <div style={{ fontSize: "2rem", marginBottom: ".75rem" }}>⚠️</div>
+                    <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text)", marginBottom: ".5rem" }}>
+                      No targets selected
+                    </div>
+                    <div style={{ fontSize: ".85rem", color: "var(--text2)", maxWidth: 480, margin: "0 auto", lineHeight: 1.6 }}>
+                      Go back to Step 5 and select at least one target keyword. We need targets to build a content roadmap.
+                    </div>
+                  </div>
+                  <div style={{ marginTop: "1.25rem", display: "flex", gap: ".6rem", flexWrap: "wrap" }}>
+                    <button onClick={() => goToStep(5)}
+                      style={{ background: "var(--s2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: ".75rem 1.1rem", fontSize: ".85rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                      ← Back
+                    </button>
+                  </div>
+                </>
+              );
+            }
+
+            // Pre-fetch state — generate button
+            const tierCounts = {
+              must: targets.filter(t => t.tier === "must").length,
+              opportunity: targets.filter(t => t.tier === "opportunity").length,
+              "long-shot": targets.filter(t => t.tier === "long-shot").length,
+            };
+
+            return (
+              <>
+                <div style={{ background: "var(--s1)", border: "1px solid var(--border)", borderRadius: 12, padding: "1.75rem 1.5rem" }}>
+                  <div style={{ textAlign: "center", marginBottom: "1.5rem" }}>
+                    <div style={{ fontSize: "2.5rem", marginBottom: ".75rem" }}>🗺️</div>
+                    <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text)", marginBottom: ".5rem" }}>
+                      Build your content roadmap
+                    </div>
+                    <div style={{ fontSize: ".85rem", color: "var(--text2)", maxWidth: 500, margin: "0 auto", lineHeight: 1.6 }}>
+                      For each of your <strong style={{ color: "var(--text)" }}>{targets.length}</strong> target{targets.length === 1 ? "" : "s"}, AI will recommend a content type, page title, angle, and when to build it. This is your "what to publish" plan.
+                    </div>
+                  </div>
+
+                  {/* Tier breakdown */}
+                  <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "1rem", marginBottom: "1.25rem", fontSize: ".82rem", color: "var(--text2)", lineHeight: 1.6 }}>
+                    <div style={{ fontWeight: 700, color: "var(--text)", marginBottom: ".4rem", fontSize: ".82rem" }}>
+                      What we're building a roadmap for
+                    </div>
+                    <div style={{ display: "flex", gap: "1.25rem", flexWrap: "wrap", fontSize: ".78rem" }}>
+                      {tierCounts.must > 0 && (
+                        <div>
+                          <span style={{ color: "var(--green)" }}>🎯</span>{" "}
+                          <strong style={{ color: "var(--text)" }}>{tierCounts.must}</strong>{" "}
+                          <span style={{ color: "var(--text3)" }}>must-target</span>
+                        </div>
+                      )}
+                      {tierCounts.opportunity > 0 && (
+                        <div>
+                          <span style={{ color: "var(--blue)" }}>🚀</span>{" "}
+                          <strong style={{ color: "var(--text)" }}>{tierCounts.opportunity}</strong>{" "}
+                          <span style={{ color: "var(--text3)" }}>opportunity</span>
+                        </div>
+                      )}
+                      {tierCounts["long-shot"] > 0 && (
+                        <div>
+                          <span style={{ color: "var(--amber)" }}>🌱</span>{" "}
+                          <strong style={{ color: "var(--text)" }}>{tierCounts["long-shot"]}</strong>{" "}
+                          <span style={{ color: "var(--text3)" }}>long-shot</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {generateErrorPh6 && (
+                    <div style={{ background: "var(--rdim)", border: "1px solid rgba(240,62,95,.3)", borderRadius: 8, padding: ".75rem 1rem", color: "var(--red)", fontSize: ".82rem", marginBottom: "1rem", lineHeight: 1.5 }}>
+                      {generateErrorPh6}
+                    </div>
+                  )}
+
+                  <button onClick={generateContentRoadmap} disabled={generatingPh6}
+                    style={{
+                      width: "100%",
+                      background: generatingPh6 ? "var(--s2)" : "var(--green)",
+                      color: generatingPh6 ? "var(--text3)" : "#000",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: ".9rem 1.25rem",
+                      fontSize: ".9rem",
+                      fontWeight: 700,
+                      cursor: generatingPh6 ? "wait" : "pointer",
+                      fontFamily: "inherit",
+                    }}>
+                    {generatingPh6 ? "🤖 Building your roadmap… (15-30s)" : "✨ Generate content roadmap"}
+                  </button>
+
+                  <div style={{ marginTop: ".75rem", fontSize: ".72rem", color: "var(--text3)", textAlign: "center", lineHeight: 1.5 }}>
+                    Doesn't use DataForSEO quota — pure AI synthesis.
+                  </div>
+                </div>
+
+                <div style={{ marginTop: "1.25rem", display: "flex", gap: ".6rem", flexWrap: "wrap" }}>
+                  <button onClick={() => goToStep(5)} disabled={generatingPh6}
+                    style={{ background: "var(--s2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: ".75rem 1.1rem", fontSize: ".85rem", fontWeight: 600, cursor: generatingPh6 ? "wait" : "pointer", fontFamily: "inherit" }}>
+                    ← Back
+                  </button>
+                </div>
+              </>
+            );
+          }
+
+          // Result state — roadmap loaded
+          const items = state.roadmap.items || [];
+          const handleRegenerate = () => {
+            if (window.confirm("Regenerate will replace this roadmap with fresh recommendations. Continue?")) {
+              setState(s => ({ ...s, roadmap: null }));
+              setTimeout(() => generateContentRoadmap(), 0);
+            }
+          };
+
+          const PHASES = [
+            {
+              key: "now",
+              title: "Build first",
+              subtitle: "Weeks 1-2",
+              icon: "🟢",
+              desc: "Foundation content — start here",
+              color: "var(--green)",
+              bg: "rgba(15,219,138,.06)",
+              border: "rgba(15,219,138,.25)",
+            },
+            {
+              key: "soon",
+              title: "Build next",
+              subtitle: "Months 2-3",
+              icon: "🔵",
+              desc: "Second wave — once foundation is in place",
+              color: "var(--blue)",
+              bg: "rgba(77,123,255,.06)",
+              border: "rgba(77,123,255,.2)",
+            },
+            {
+              key: "later",
+              title: "Build later",
+              subtitle: "Month 4+",
+              icon: "🟡",
+              desc: "Deeper coverage — fill in once you have traction",
+              color: "var(--amber)",
+              bg: "rgba(245,166,35,.06)",
+              border: "rgba(245,166,35,.2)",
+            },
+          ];
+
+          // Content type → icon + label mapping for compact display
+          const CONTENT_TYPE_META = {
+            "service-page": { icon: "🛠️", label: "Service page" },
+            "landing-page": { icon: "🎯", label: "Landing page" },
+            "blog":         { icon: "📝", label: "Blog post" },
+            "guide":        { icon: "📚", label: "Guide" },
+            "comparison":   { icon: "⚖️", label: "Comparison" },
+            "listicle":     { icon: "📋", label: "Listicle" },
+            "how-to":       { icon: "🧭", label: "How-to" },
+          };
+
+          const TIER_META = {
+            "must":        { icon: "🎯", label: "Must" },
+            "opportunity": { icon: "🚀", label: "Opp" },
+            "long-shot":   { icon: "🌱", label: "Long" },
+          };
+
+          const renderRoadmapItem = (item, idx) => {
+            const ctMeta = CONTENT_TYPE_META[item.contentType] || CONTENT_TYPE_META.blog;
+            const tMeta  = TIER_META[item.tier] || TIER_META.opportunity;
+
+            return (
+              <div key={item.keyword + idx} style={{
+                padding: "1rem 1.1rem",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: 10,
+                marginBottom: ".6rem",
+              }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: ".75rem", marginBottom: ".5rem", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: "1.1rem", flexShrink: 0, lineHeight: 1.2 }}>{ctMeta.icon}</span>
+                  <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+                    <div style={{ fontSize: ".95rem", fontWeight: 700, color: "var(--text)", lineHeight: 1.35, marginBottom: ".2rem", wordBreak: "break-word" }}>
+                      {item.title || item.keyword}
+                    </div>
+                    <div style={{ fontSize: ".74rem", color: "var(--text3)", fontFamily: "var(--mono)", wordBreak: "break-word" }}>
+                      → targets: "{item.keyword}"
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: ".4rem", flexShrink: 0, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: ".62rem", padding: ".15rem .45rem", borderRadius: 4, background: "var(--s2)", color: "var(--text2)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em" }}>
+                      {ctMeta.label}
+                    </span>
+                    <span style={{ fontSize: ".62rem", padding: ".15rem .45rem", borderRadius: 4, background: "transparent", border: "1px solid var(--border2)", color: "var(--text3)", fontWeight: 600, fontFamily: "var(--mono)" }}>
+                      ~{item.wordCount.toLocaleString()} words
+                    </span>
+                    <span style={{ fontSize: ".62rem", padding: ".15rem .45rem", borderRadius: 4, background: "var(--s2)", color: "var(--text3)", fontWeight: 600 }}>
+                      {tMeta.icon} {tMeta.label}
+                    </span>
+                  </div>
+                </div>
+                {item.angle && (
+                  <div style={{ fontSize: ".82rem", color: "var(--text2)", lineHeight: 1.55 }}>
+                    {item.angle}
+                  </div>
+                )}
+              </div>
+            );
+          };
+
+          const groupedByPhase = PHASES.map(phase => ({
+            ...phase,
+            items: items.filter(i => i.phase === phase.key),
+          }));
+
+          return (
+            <>
+              {/* Strategic summary */}
+              {state.roadmap.summary && (
+                <div style={{ background: "linear-gradient(135deg, rgba(15,219,138,.08), rgba(77,123,255,.06))", border: "1px solid rgba(15,219,138,.2)", borderRadius: 12, padding: "1.1rem 1.25rem", marginBottom: "1.25rem" }}>
+                  <div style={{ fontSize: ".68rem", textTransform: "uppercase", letterSpacing: ".12em", color: "var(--green)", fontWeight: 700, marginBottom: ".4rem" }}>
+                    🗺️ Your Content Strategy
+                  </div>
+                  <div style={{ fontSize: ".88rem", color: "var(--text)", lineHeight: 1.55, fontWeight: 500 }}>
+                    {state.roadmap.summary}
+                  </div>
+                </div>
+              )}
+
+              {/* Summary header */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem", flexWrap: "wrap", gap: ".75rem", padding: ".75rem 1rem", background: "var(--s1)", border: "1px solid var(--border)", borderRadius: 10 }}>
+                <div>
+                  <div style={{ fontSize: ".88rem", fontWeight: 700, color: "var(--text)" }}>
+                    Content roadmap
+                  </div>
+                  <div style={{ fontSize: ".74rem", color: "var(--text2)", marginTop: ".15rem" }}>
+                    <strong style={{ color: "var(--text)" }}>{items.length}</strong> {items.length === 1 ? "page" : "pages"} planned
+                    {state.roadmap.provider && <> · via {state.roadmap.provider}</>}
+                  </div>
+                </div>
+                <button onClick={handleRegenerate} disabled={generatingPh6}
+                  style={{ background: "var(--s2)", color: "var(--text2)", border: "1px solid var(--border)", borderRadius: 7, padding: ".45rem .85rem", fontSize: ".75rem", fontWeight: 600, cursor: generatingPh6 ? "wait" : "pointer", fontFamily: "inherit" }}>
+                  {generatingPh6 ? "Regenerating…" : "↻ Regenerate"}
+                </button>
+              </div>
+
+              {/* Phase sections */}
+              {groupedByPhase.map(phase => {
+                if (phase.items.length === 0) return null;
+                return (
+                  <div key={phase.key} style={{ background: phase.bg, border: `1px solid ${phase.border}`, borderRadius: 12, padding: "1.1rem 1.1rem", marginBottom: "1rem" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: ".4rem", gap: ".5rem", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: ".5rem", flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "1rem" }}>{phase.icon}</span>
+                        <span style={{ fontSize: ".95rem", fontWeight: 700, color: phase.color }}>{phase.title}</span>
+                        <span style={{ fontSize: ".7rem", color: "var(--text3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em" }}>{phase.subtitle}</span>
+                      </div>
+                      <span style={{ fontSize: ".7rem", color: "var(--text3)", fontFamily: "var(--mono)" }}>
+                        {phase.items.length} {phase.items.length === 1 ? "page" : "pages"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: ".74rem", color: "var(--text2)", marginBottom: ".85rem", lineHeight: 1.5 }}>
+                      {phase.desc}
+                    </div>
+                    {phase.items.map(renderRoadmapItem)}
+                  </div>
+                );
+              })}
+
+              {/* What's next footer */}
+              <div style={{ background: "rgba(15,219,138,.06)", border: "1px solid rgba(15,219,138,.2)", borderRadius: 10, padding: "1.1rem 1.25rem", marginBottom: "1.25rem" }}>
+                <div style={{ fontSize: ".82rem", fontWeight: 700, color: "var(--green)", marginBottom: ".5rem" }}>
+                  🎉 You've built your SEO foundation
+                </div>
+                <div style={{ fontSize: ".8rem", color: "var(--text2)", lineHeight: 1.6 }}>
+                  Start with the "Build first" pages — they're your highest-priority content. As Google starts indexing them, you'll begin seeing real GSC data, and the rest of RankActions (Strategy Planner, Content Generator, Page Audit) becomes more powerful. Your roadmap is saved here — come back any time.
+                </div>
+              </div>
+
+              {/* Final actions */}
+              <div style={{ marginTop: "1.25rem", display: "flex", gap: ".6rem", flexWrap: "wrap" }}>
+                <button onClick={() => goToStep(5)}
+                  style={{ background: "var(--s2)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: 8, padding: ".75rem 1.1rem", fontSize: ".85rem", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", flex: "0 0 auto" }}>
+                  ← Back
+                </button>
+                <button onClick={completeWizard}
+                  style={{
+                    flex: "1 1 200px",
+                    background: "var(--green)",
+                    color: "#000",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: ".75rem 1.1rem",
+                    fontSize: ".88rem",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}>
+                  ✓ Complete setup
+                </button>
+              </div>
+            </>
+          );
+        })()}
       </div>
     );
   };
