@@ -2409,8 +2409,49 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
               <div style={{fontSize:".9rem",lineHeight:1.65,color:"var(--text2)",marginBottom:"1.25rem"}}>
                 Your site needs ~3-4 weeks of Google Search Console data before we can identify ranking opportunities. New sites and low-traffic pages typically have very few keywords ranking, so there's nothing for us to optimise yet.
               </div>
+
+              {/* Starting Out — prominent CTA for brand-new sites.
+                  Walks the user through a guided keyword research and
+                  content planning flow that doesn't depend on GSC data. */}
+              <div style={{
+                background:"linear-gradient(135deg, rgba(15,219,138,.08), rgba(36,124,255,.08))",
+                border:"1px solid rgba(15,219,138,.25)",
+                borderRadius:10,
+                padding:"1.1rem 1.25rem",
+                marginBottom:"1.5rem",
+                display:"flex",
+                alignItems:"center",
+                justifyContent:"space-between",
+                gap:"1rem",
+                flexWrap:"wrap",
+              }}>
+                <div style={{flex:"1 1 280px"}}>
+                  <div style={{fontSize:".9rem",fontWeight:700,color:"var(--text)",marginBottom:".25rem"}}>
+                    🚀 Just built your site? Start here
+                  </div>
+                  <div style={{fontSize:".8rem",color:"var(--text2)",lineHeight:1.5}}>
+                    A 5-minute guided setup that picks the right keywords for your business and builds a content roadmap — no GSC data required.
+                  </div>
+                </div>
+                <button onClick={()=>setScreen("startingOut")}
+                  style={{
+                    background:"var(--green)",
+                    color:"#000",
+                    border:"none",
+                    borderRadius:8,
+                    padding:".6rem 1.1rem",
+                    fontSize:".85rem",
+                    fontWeight:700,
+                    cursor:"pointer",
+                    fontFamily:"inherit",
+                    flexShrink:0,
+                  }}>
+                  Start setup →
+                </button>
+              </div>
+
               <div style={{fontSize:".85rem",fontWeight:600,color:"var(--text)",marginBottom:".6rem"}}>
-                In the meantime, here's what to do:
+                Or in the meantime, here's what to do:
               </div>
               <ul style={{listStyle:"none",padding:0,margin:0,display:"flex",flexDirection:"column",gap:".7rem"}}>
                 <li style={{display:"flex",alignItems:"flex-start",gap:".65rem",fontSize:".88rem",color:"var(--text2)",lineHeight:1.55}}>
@@ -4555,6 +4596,112 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
       try { return JSON.parse(localStorage.getItem(`ra_strategy_${selectedSite}`) || "null"); } catch { return null; }
     });
 
+    // Keyword enrichment via DataForSEO. Map of normalised keyword → { volume, cpc, competition, ... }
+    // Persisted to localStorage so the user doesn't lose their data on reload.
+    const [keywordEnrichment, setKeywordEnrichment] = useState(() => {
+      try { return JSON.parse(localStorage.getItem(`ra_kw_enrich_${selectedSite}`) || "{}"); } catch { return {}; }
+    });
+    const [enriching, setEnriching] = useState(false);
+    const [enrichError, setEnrichError] = useState(null);
+    const [enrichQuota, setEnrichQuota] = useState(null); // { used, limit }
+
+    // When user switches sites, reload that site's saved enrichment cache
+    // (or empty it if the new site has none). Same ref-tracking pattern
+    // as RankTracker's loadedSite — only fires on actual changes.
+    const enrichSiteRef = useRef(selectedSite);
+    useEffect(() => {
+      if (enrichSiteRef.current === selectedSite) return;
+      enrichSiteRef.current = selectedSite;
+      try {
+        const cached = JSON.parse(localStorage.getItem(`ra_kw_enrich_${selectedSite}`) || "{}");
+        setKeywordEnrichment(cached);
+      } catch {
+        setKeywordEnrichment({});
+      }
+      setEnrichError(null);
+      setEnrichQuota(null);
+    }, [selectedSite]);
+
+    const normaliseKw = (s) => String(s || "").toLowerCase().trim().replace(/\s+/g, " ");
+
+    const enrichWithKeywordData = async () => {
+      if (!strategy) return;
+      setEnriching(true);
+      setEnrichError(null);
+      try {
+        // Gather all strategy keywords (pillar + clusters), dedup
+        const keywords = [
+          strategy.pillar?.keyword,
+          ...(strategy.clusters || []).map(c => c.keyword),
+        ].filter(Boolean).map(normaliseKw).filter(k => k.length > 0);
+        const unique = [...new Set(keywords)];
+        if (unique.length === 0) {
+          setEnrichError("No keywords to enrich");
+          setEnriching(false);
+          return;
+        }
+
+        const res = await authFetch(`${WORKER_URL}/api/keyword-data`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: unique, country: "gb" }),
+        });
+        const data = await res.json();
+
+        if (res.status === 402) {
+          // Quota or plan-tier issue
+          if (data.upgrade) {
+            setEnrichError(`Keyword research is a Pro feature. Upgrade to enrich your strategy with real search volume data.`);
+          } else {
+            setEnrichError(`Quota reached (${data.used}/${data.limit}). Resets next month.`);
+          }
+          setEnriching(false);
+          return;
+        }
+        if (!res.ok) {
+          setEnrichError(data?.error || "Couldn't fetch keyword data — please try again");
+          setEnriching(false);
+          return;
+        }
+
+        // Merge into existing enrichment cache
+        const merged = { ...keywordEnrichment };
+        for (const item of (data.keywords || [])) {
+          if (item.keyword) {
+            merged[normaliseKw(item.keyword)] = item;
+          }
+        }
+        setKeywordEnrichment(merged);
+        localStorage.setItem(`ra_kw_enrich_${selectedSite}`, JSON.stringify(merged));
+        if (data.quotaLimit !== null && data.quotaLimit !== undefined) {
+          setEnrichQuota({ used: data.quotaUsed, limit: data.quotaLimit });
+        }
+        if (data.partial) {
+          setEnrichError(`Some data unavailable (cached results shown). Reason: ${data.reason || "unknown"}`);
+        }
+      } catch (err) {
+        setEnrichError("Couldn't fetch keyword data — network error");
+      }
+      setEnriching(false);
+    };
+
+    // Helper: render keyword volume + difficulty as a small badge.
+    // Returns null when no data is available for this keyword.
+    const KeywordBadge = ({ keyword }) => {
+      const data = keywordEnrichment[normaliseKw(keyword)];
+      if (!data || data.available === false) return null;
+      const vol = data.volume;
+      const comp = data.competitionIndex; // 0-100 from DataForSEO
+      const compLabel = comp == null ? null : comp < 33 ? "Easy" : comp < 66 ? "Medium" : "Hard";
+      const compColor = comp == null ? "var(--text3)" : comp < 33 ? "var(--green)" : comp < 66 ? "var(--amber)" : "var(--red)";
+      return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: ".4rem", marginLeft: ".5rem", fontSize: ".7rem", color: "var(--text3)" }}>
+          {vol != null && <span style={{ fontFamily: "var(--mono)" }}>📊 {vol.toLocaleString()}/mo</span>}
+          {compLabel && <span style={{ color: compColor, fontWeight: 600 }}>· {compLabel}</span>}
+        </span>
+      );
+    };
+
     const saveStrategy = (s) => {
       setStrategy(s);
       localStorage.setItem(`ra_strategy_${selectedSite}`, JSON.stringify(s));
@@ -4907,7 +5054,11 @@ Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the
                     </select>
                   </div>
                   <div style={{ fontSize: ".95rem", fontWeight: 700, color: "var(--text)", marginBottom: ".25rem" }}>{strategy.pillar.title}</div>
-                  <div style={{ fontSize: ".78rem", color: "var(--text2)", marginBottom: ".25rem" }}>Target keyword: "{strategy.pillar.keyword}" · {strategy.pillar.wordCount} words recommended</div>
+                  <div style={{ fontSize: ".78rem", color: "var(--text2)", marginBottom: ".25rem" }}>
+                    Target keyword: "{strategy.pillar.keyword}"
+                    <KeywordBadge keyword={strategy.pillar.keyword} />
+                    · {strategy.pillar.wordCount} words recommended
+                  </div>
                   {strategy.pillar.description && <div style={{ fontSize: ".78rem", color: "var(--text3)", lineHeight: 1.5, marginBottom: ".75rem" }}>{strategy.pillar.description}</div>}
                   <div style={{ display: "flex", gap: ".5rem" }}>
                     <button onClick={() => writeContent(strategy.pillar.keyword, strategy.pillar.title)}
@@ -4919,6 +5070,43 @@ Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the
                         style={{ flex: 1, background: "var(--s2)", border: "1px solid var(--border)", borderRadius: 7, padding: ".4rem .65rem", color: "var(--text)", fontFamily: "inherit", fontSize: ".78rem", outline: "none" }}/>
                     )}
                   </div>
+                </div>
+
+                {/* Enrich with real keyword data — Pro+ only.
+                    One click fetches search volume + competition for every keyword
+                    in the strategy (pillar + all clusters). Costs 1 quota credit
+                    per click; data caches for 30 days. */}
+                <div style={{ ...cardStyle, marginBottom: ".75rem", background: Object.keys(keywordEnrichment).length > 0 ? "rgba(15,219,138,.04)" : "var(--s1)" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: ".5rem" }}>
+                    <div>
+                      <div style={{ fontSize: ".85rem", fontWeight: 600, color: "var(--text)" }}>
+                        {Object.keys(keywordEnrichment).length > 0 ? "📊 Keyword data loaded" : "Enrich with real keyword data"}
+                      </div>
+                      <div style={{ fontSize: ".7rem", color: "var(--text3)", marginTop: ".15rem" }}>
+                        {Object.keys(keywordEnrichment).length > 0
+                          ? "Search volume + competition shown next to each keyword below"
+                          : isPro
+                            ? "Pulls real Google search volume and competition for every keyword in this strategy"
+                            : "Available on Pro plans — see real search volume + competition data"}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: ".25rem" }}>
+                      <button onClick={enrichWithKeywordData} disabled={enriching || !isPro}
+                        style={{ background: isPro ? "var(--blue)" : "var(--s2)", color: isPro ? "#fff" : "var(--text3)", border: "none", borderRadius: 7, padding: ".45rem .9rem", fontSize: ".78rem", fontWeight: 700, cursor: isPro ? "pointer" : "not-allowed", fontFamily: "inherit", opacity: enriching ? 0.6 : 1 }}>
+                        {enriching ? "Loading…" : isPro ? (Object.keys(keywordEnrichment).length > 0 ? "↻ Refresh data" : "📊 Get keyword data") : "🔒 Pro feature"}
+                      </button>
+                      {enrichQuota && (
+                        <div style={{ fontSize: ".68rem", color: "var(--text3)", fontFamily: "var(--mono)" }}>
+                          {enrichQuota.used}/{enrichQuota.limit} sessions used this month
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {enrichError && (
+                    <div style={{ marginTop: ".6rem", padding: ".5rem .65rem", background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 6, fontSize: ".75rem", color: "var(--red)" }}>
+                      {enrichError}
+                    </div>
+                  )}
                 </div>
 
                 {/* How linking works */}
@@ -4936,7 +5124,11 @@ Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the
                           <span style={{ fontSize: ".65rem", color: statusColors[c.status], fontWeight: 600 }}>{statusIcons[c.status]} {statusLabels[c.status]}</span>
                         </div>
                         <div style={{ fontSize: ".88rem", fontWeight: 600, color: "var(--text)", marginBottom: ".2rem" }}>{c.title}</div>
-                        <div style={{ fontSize: ".75rem", color: "var(--text3)" }}>"{c.keyword}" · {c.wordCount} words</div>
+                        <div style={{ fontSize: ".75rem", color: "var(--text3)" }}>
+                          "{c.keyword}"
+                          <KeywordBadge keyword={c.keyword} />
+                          · {c.wordCount} words
+                        </div>
                         {c.angle && <div style={{ fontSize: ".75rem", color: "var(--text2)", marginTop: ".2rem" }}>{c.angle}</div>}
                         {c.internalLink && <div style={{ fontSize: ".72rem", color: "var(--blue)", marginTop: ".25rem" }}>🔗 {c.internalLink}</div>}
                       </div>
@@ -6341,6 +6533,18 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           {screen==="links"      && <LinkBuildingScreen/>}
           {screen==="tracker"    && <RankTracker/>}
           {screen==="audit"      && <PageAudit/>}
+          {screen==="startingOut" && (
+            <div className="content" style={{textAlign:"center",paddingTop:"4rem",color:"var(--text3)"}}>
+              <div style={{fontSize:"1.1rem",fontWeight:600,color:"var(--text2)",marginBottom:".5rem"}}>Starting Out wizard</div>
+              <div style={{fontSize:".85rem",maxWidth:480,margin:"0 auto",lineHeight:1.6}}>
+                Coming soon — a guided setup that walks you through choosing the right keywords and building a content roadmap for your new site.
+              </div>
+              <button onClick={()=>setScreen("dashboard")}
+                style={{marginTop:"1.5rem",background:"var(--s2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:7,padding:".5rem 1rem",fontSize:".82rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                ← Back to dashboard
+              </button>
+            </div>
+          )}
           {screen==="settings"   && <SettingsScreen/>}
           {screen==="reports"    && <ReportsTab/>}
           {screen==="admin"      && isAdmin && <AdminPanel/>}
