@@ -6071,7 +6071,7 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           <div style={{display:"flex",justifyContent:"flex-end",marginBottom:".75rem"}}>
             <button
               type="button"
-              onClick={()=>exportAuditPdf({audit:auditData,perf:perfData})}
+              onClick={()=>exportAuditPdf({audit:auditData,perf:perfData,tier:plan})}
               disabled={perfLoading}
               title={perfLoading?"Wait for page speed scan to finish for a complete report":"Download branded PDF report"}
               style={{padding:".5rem 1rem",background:"transparent",color:"var(--green)",border:"1px solid var(--green)",borderRadius:8,fontFamily:"var(--font)",fontWeight:600,fontSize:".8rem",cursor:perfLoading?"wait":"pointer",opacity:perfLoading?.5:1,display:"inline-flex",alignItems:"center",gap:".4rem"}}>
