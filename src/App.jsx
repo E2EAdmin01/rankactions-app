@@ -5968,6 +5968,110 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
 
     const [url, setUrl] = useState(auditUrl || urlForSite(selectedSite));
 
+    // Agency white-label state. Two text inputs (company name + URL) shown
+    // inline next to the Download PDF button, ONLY visible to Agency-tier
+    // users. Both fields persist to localStorage (one set of values per user,
+    // not per-site — the agency name doesn't change per audited client).
+    // Empty values are fine; the PDF builder falls back to RankActions
+    // defaults for any branding field that isn't supplied.
+    const [wlName, setWlName] = useState(() => {
+      try { return localStorage.getItem("ra_wl_name") || ""; } catch { return ""; }
+    });
+    const [wlUrl, setWlUrl] = useState(() => {
+      try { return localStorage.getItem("ra_wl_url") || ""; } catch { return ""; }
+    });
+
+    // Persist on change. Wrapped in try/catch because localStorage can throw
+    // in private-browsing or quota-exceeded scenarios.
+    const updateWlName = (v) => {
+      setWlName(v);
+      try { localStorage.setItem("ra_wl_name", v); } catch {}
+    };
+    const updateWlUrl = (v) => {
+      setWlUrl(v);
+      try { localStorage.setItem("ra_wl_url", v); } catch {}
+    };
+
+    // Build the branding object passed to exportAuditPdf. Returns undefined
+    // if not Agency or both fields blank — the exporter then falls through to
+    // RankActions defaults, exactly as it did before this feature existed.
+    const buildWlBranding = () => {
+      if (!isAgency) return undefined;
+      const name = wlName.trim();
+      const siteUrl = wlUrl.trim();
+      if (!name && !siteUrl) return undefined;
+
+      // Two-tone wordmark split: if the agency name has multiple words, the
+      // last word renders in accent colour, the rest in dark. Single-word
+      // names render entirely in dark with empty suffix. Avoids needing the
+      // user to manually pick a split.
+      let prefix = name, suffix = "";
+      if (name) {
+        const parts = name.split(/\s+/);
+        if (parts.length > 1) {
+          suffix = parts.pop();
+          prefix = parts.join(" ") + " ";
+        }
+      }
+
+      // Strip protocol from URL for display ("e2e-integration.co.uk" reads
+      // cleaner than "https://e2e-integration.co.uk" in a footer).
+      const cleanUrl = siteUrl.replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+
+      // Replace RankActions-specific cover-page sales copy with neutral,
+      // honest, audit-focused content. The agency isn't claiming to BE an
+      // SEO platform — they're delivering an audit using one. Copy reflects
+      // that.
+      return {
+        name: name || "Page SEO Audit",
+        wordmarkPrefix: prefix || "Page SEO ",
+        wordmarkSuffix: suffix || "Audit",
+        siteUrl: cleanUrl || undefined,
+
+        tagline: "Page SEO audit and recommendations",
+        intro: name
+          ? `A detailed page-level audit prepared by ${name}, covering on-page SEO, page speed (mobile), and AI search readiness — with prioritised recommendations.`
+          : "A detailed page-level audit covering on-page SEO, page speed (mobile), and AI search readiness — with prioritised recommendations.",
+        builtForLine: "On-page SEO · Page speed · AI search readiness · Prioritised recommendations",
+
+        // Replace the FIND/FIX/TRACK columns with neutral content describing
+        // what's IN this report, not what RankActions does as a product.
+        howWorksTitle: "What this report covers",
+        stages: [
+          {
+            stage: "SEO",
+            title: "On-page SEO",
+            desc: "Title tags, meta descriptions, headings, structured data, image alt text, internal linking, canonical tags, and more — graded out of 100.",
+            bullets: ["13 individual SEO checks", "Severity-ranked issues", "Plain-English explanations"],
+          },
+          {
+            stage: "SPEED",
+            title: "Page performance",
+            desc: "Mobile page speed measured by Google's PageSpeed Insights — Core Web Vitals (LCP, CLS, FCP) plus opportunities to reduce load time.",
+            bullets: ["Core Web Vitals", "Speed opportunities", "Mobile-first metrics"],
+          },
+          {
+            stage: "AI",
+            title: "AI search readiness",
+            desc: "Structural signals that determine whether ChatGPT, Google AI Overviews, and Perplexity will cite this page when answering relevant questions.",
+            bullets: ["FAQ + HowTo schema", "Question-based headings", "Author + content freshness"],
+          },
+        ],
+        whyTitle: "How to use this report",
+        proofPoints: [
+          ["Start with the top 3 priorities", "The first page lists the three highest-impact issues to fix — these typically deliver the largest measurable change."],
+          ["Work through severity bands", "Critical issues first, then warnings. Each item has a plain-English explanation and a recommended fix."],
+          ["Re-run regularly", "Page audits are point-in-time snapshots. Re-run monthly or after major changes to track progress."],
+        ],
+        ctaTitle: "Questions about this report?",
+        ctaBody: name && cleanUrl
+          ? `Get in touch with ${name} at ${cleanUrl} for help interpreting these results and implementing recommendations.`
+          : name
+            ? `Get in touch with ${name} for help interpreting these results and implementing recommendations.`
+            : `Get in touch for help interpreting these results and implementing recommendations.`,
+      };
+    };
+
     // Track which site this component last *observed* in state. Initialised
     // to selectedSite so first mount is treated as a no-op — we only act
     // when the site actually changes, never on initial render. Same pattern
@@ -6067,11 +6171,33 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
         {auditLoading && <div style={{textAlign:"center",padding:"3rem",color:"var(--text3)"}}><div className="spinner-sm" style={{margin:"0 auto .75rem"}}/>Scanning SEO and performance — this may take 10-15 seconds...</div>}
         {auditData?.error && <div style={{padding:"1rem",background:"rgba(240,62,95,.08)",border:"1px solid rgba(240,62,95,.2)",borderRadius:10,color:"#f03e5f",fontSize:".85rem"}}>Could not audit: {auditData.error}</div>}
         {auditData?.audited && <>
-          {/* ── Download PDF button ── */}
-          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:".75rem"}}>
+          {/* ── Download PDF button + Agency white-label inputs ── */}
+          <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:".5rem",marginBottom:".75rem",flexWrap:"wrap"}}>
+            {isAgency && (
+              <>
+                <input
+                  type="text"
+                  value={wlName}
+                  onChange={e=>updateWlName(e.target.value)}
+                  placeholder="Report by (your company name)"
+                  maxLength={60}
+                  title="Optional. If set, replaces RankActions branding on the cover page with your company name."
+                  style={{padding:".5rem .75rem",background:"var(--s2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:8,fontFamily:"var(--font)",fontSize:".8rem",outline:"none",width:"220px"}}
+                />
+                <input
+                  type="text"
+                  value={wlUrl}
+                  onChange={e=>updateWlUrl(e.target.value)}
+                  placeholder="yourcompany.co.uk"
+                  maxLength={80}
+                  title="Optional. Your website URL — appears in the report footer."
+                  style={{padding:".5rem .75rem",background:"var(--s2)",color:"var(--text)",border:"1px solid var(--border)",borderRadius:8,fontFamily:"var(--font)",fontSize:".8rem",outline:"none",width:"180px"}}
+                />
+              </>
+            )}
             <button
               type="button"
-              onClick={()=>exportAuditPdf({audit:auditData,perf:perfData,tier:plan})}
+              onClick={()=>exportAuditPdf({audit:auditData,perf:perfData,tier:plan,branding:buildWlBranding()})}
               disabled={perfLoading}
               title={perfLoading?"Wait for page speed scan to finish for a complete report":"Download branded PDF report"}
               style={{padding:".5rem 1rem",background:"transparent",color:"var(--green)",border:"1px solid var(--green)",borderRadius:8,fontFamily:"var(--font)",fontWeight:600,fontSize:".8rem",cursor:perfLoading?"wait":"pointer",opacity:perfLoading?.5:1,display:"inline-flex",alignItems:"center",gap:".4rem"}}>

@@ -77,6 +77,44 @@ const DEFAULT_BRAND = {
   // RankActions; white-label agencies get false so the audit delivers as a
   // clean report without trying to sell RankActions on page 1.
   showProductPage: true,
+
+  // Cover page section content. White-label callers (Agency tier) can override
+  // any of these to replace the RankActions sales copy with neutral
+  // audit-focused content. Defaults below are RankActions-specific marketing.
+  howWorksTitle:   'How RankActions works',
+  stages: [
+    {
+      stage: 'FIND',
+      title: "Find what's broken",
+      desc:  'Page audits, technical SEO checks, broken links, structured data validation and AI search readiness — all in plain English.',
+      bullets: ['Page-level audits', 'Site-wide crawls', 'AI Search readiness checks'],
+    },
+    {
+      stage: 'FIX',
+      title: 'Fix it fast',
+      desc:  'AI ranks every issue by impact and effort, then drafts the fix for you — meta descriptions, schema markup, full content rewrites.',
+      bullets: ['Prioritised weekly action list', 'AI Content Generator', 'Strategy Planner'],
+    },
+    {
+      stage: 'TRACK',
+      title: 'Track results',
+      desc:  'Daily rank tracking, Google Search Console integration, link building tools and white-label reports for clients.',
+      bullets: ['Daily Rank Tracker', 'Real Google Search Console data', 'Weekly digest + PDF reports'],
+    },
+  ],
+  whyTitle:        'Why teams choose RankActions',
+  proofPoints: [
+    ['No SEO expertise required',     'Plain-English explanations and copy-paste fixes for every issue. If you can use a CMS, you can use RankActions.'],
+    ['Built on real Google data',     'Live data from Google Search Console — not estimates or third-party scrapers.'],
+    ['AI Search Ready',               "Built-in checks for ChatGPT, Perplexity and Google AI Overviews citation signals — most SEO tools haven't caught up yet."],
+  ],
+  ctaTitle:        'See it on your own site',
+  ctaBody:         null, // Computed at runtime when null — defaults to "Free trial at {siteUrl} ..."
+
+  // Tiny attribution line. White-label callers don't override this — it always
+  // reads "Powered by RankActions" so we get a discreet credit without being
+  // intrusive. Set to false to suppress entirely (not recommended).
+  poweredByLine:   true,
 };
 
 
@@ -315,32 +353,13 @@ export function exportAuditPdf({ audit, perf, tier, branding } = {}) {
   setText(brand.dark);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.text(`How ${brand.name} works`, margin, y);
+  doc.text(brand.howWorksTitle, margin, y);
   setDraw(brand.accent);
   doc.setLineWidth(0.6);
   doc.line(margin, y + 1.5, margin + 18, y + 1.5);
   y += 7;
 
-  const stages = [
-    {
-      stage: 'FIND',
-      title: 'Find what\'s broken',
-      desc: 'Page audits, technical SEO checks, broken links, structured data validation and AI search readiness — all in plain English.',
-      bullets: ['Page-level audits', 'Site-wide crawls', 'AI Search readiness checks'],
-    },
-    {
-      stage: 'FIX',
-      title: 'Fix it fast',
-      desc: 'AI ranks every issue by impact and effort, then drafts the fix for you — meta descriptions, schema markup, full content rewrites.',
-      bullets: ['Prioritised weekly action list', 'AI Content Generator', 'Strategy Planner'],
-    },
-    {
-      stage: 'TRACK',
-      title: 'Track results',
-      desc: 'Daily rank tracking, Google Search Console integration, link building tools and white-label reports for clients.',
-      bullets: ['Daily Rank Tracker', 'Real Google Search Console data', 'Weekly digest + PDF reports'],
-    },
-  ];
+  const stages = brand.stages;
 
   // Calculate uniform stage card height
   const stageW = (contentW - 8) / 3;
@@ -399,17 +418,13 @@ export function exportAuditPdf({ audit, perf, tier, branding } = {}) {
   setText(brand.dark);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.text(`Why teams choose ${brand.name}`, margin, y);
+  doc.text(brand.whyTitle, margin, y);
   setDraw(brand.accent);
   doc.setLineWidth(0.6);
   doc.line(margin, y + 1.5, margin + 18, y + 1.5);
   y += 7;
 
-  const proofPoints = [
-    ['No SEO expertise required',     `Plain-English explanations and copy-paste fixes for every issue. If you can use a CMS, you can use ${brand.name}.`],
-    ['Built on real Google data',     'Live data from Google Search Console — not estimates or third-party scrapers.'],
-    ['AI Search Ready',               'Built-in checks for ChatGPT, Perplexity and Google AI Overviews citation signals — most SEO tools haven\'t caught up yet.'],
-  ];
+  const proofPoints = brand.proofPoints;
 
   proofPoints.forEach(([title, desc]) => {
     setFill(brand.accent);
@@ -440,12 +455,26 @@ export function exportAuditPdf({ audit, perf, tier, branding } = {}) {
   setText('#ffffff');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('See it on your own site', margin + 6, y + 8);
+  doc.text(brand.ctaTitle, margin + 6, y + 8);
   setText('#cccccc');
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.text(`Free trial at ${brand.siteUrl}  ·  Or book a 20-minute walkthrough — no slides, just your site.`, margin + 6, y + 15);
+  // Allow brand.ctaBody to be explicitly set; fall back to the RankActions
+  // free-trial line for the default brand.
+  const ctaBodyText = brand.ctaBody || `Free trial at ${brand.siteUrl}  ·  Or book a 20-minute walkthrough — no slides, just your site.`;
+  doc.text(ctaBodyText, margin + 6, y + 15);
   y += 24;
+
+  // Tiny attribution — only shown for white-label exports (agency tier with
+  // custom branding). Default RankActions exports already say "RankActions"
+  // throughout and don't need this line.
+  if (isAgency && brand.poweredByLine) {
+    setText(C.textSoft);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.text('Powered by RankActions', pageW / 2, y + 2, { align: 'center' });
+    y += 4;
+  }
 
   addFooter();
   doc.addPage();
