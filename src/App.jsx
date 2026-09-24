@@ -1228,6 +1228,23 @@ function readStrategyCache(site) {
 
 // Body words only, the same measure validateGeneratedHtml uses, so the
 // expansion decision and the warning the user sees can never disagree.
+// <meta> is a void element: it cannot contain text. The model sometimes writes
+// <meta name="description">text</meta>, which (a) leaves the page with NO meta
+// description as far as Google is concerned, since there is no content
+// attribute, and (b) makes the browser eject the text into the top of the
+// visible page — seen on 24 Sep 2026 as a stray sentence above the header.
+// Move the text into content="..." and drop the closing tag.
+function repairMetaTags(html) {
+  const esc = (t) => String(t).replace(/\s+/g, " ").trim()
+    .replace(/&(?!(?:amp|lt|gt|quot|#\d+);)/g, "&amp;").replace(/"/g, "&quot;");
+  return String(html || "")
+    .replace(/<meta\b([^>]*?)\s*\/?>([^<]*?)<\/meta>/gi, (whole, attrs, text) => {
+      if (/\bcontent\s*=/i.test(attrs) || !text.trim()) return `<meta${attrs}>`;
+      return `<meta${attrs} content="${esc(text)}">`;
+    })
+    .replace(/<\/meta>/gi, "");
+}
+
 // Keywords that ask about money. The model cannot know the client's prices and,
 // for these keywords, invents them anyway — "cost of data protection officer"
 // produced six salary figures on 24 Sep 2026 despite the no-figures rule.
@@ -1333,6 +1350,9 @@ function findUnverifiedFigures(html, suppliedText = "") {
     /[£$€]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:k|m|bn|million|billion|thousand)\b)?/gi,
     /\b\d[\d,]*(?:\.\d+)?\s?(?:pounds|GBP|dollars|USD|euros|EUR)\b/gi,
     /\b\d+(?:\.\d+)?\s?(?:%|per\s?cent\b)/gi,
+    // Spelled out ("twenty to thirty percent"): the model switched to words
+    // once digits with a percent sign were being flagged.
+    /\b(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)[\s-]*)+(?:to\s+(?:(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)[\s-]*)+)?per\s?cent\b/gi,
     /\b\d{1,3}\s+(?:out\s+of|in)\s+\d{1,4}\b(?!\s*(?:words|minutes|seconds|days|weeks|months|years))/gi,
     /\b(?:studies|research|surveys?|statistics|data)\s+(?:show|shows|suggest|suggests|found|finds|reveal|reveals|indicate|indicates)\b/gi,
     /\baccording\s+to\s+(?:a\s+|the\s+)?(?:recent\s+|new\s+|one\s+|industry\s+)?(?:study|survey|report|research|statistics|figures)\b/gi,
@@ -1390,6 +1410,13 @@ function validateGeneratedHtml(html, { keyword, targetWords, suppliedText } = {}
   const domainish = names.filter(n => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(n.trim()) && !/\s/.test(n.trim()));
   if (domainish.length > 0) {
     warnings.push(`Schema author/publisher is set to "${domainish[0]}" rather than your business name.`);
+  }
+
+  // A description with no content attribute is invisible to Google.
+  const descTag = String(html).match(/<meta\b[^>]*name=["']description["'][^>]*>/i);
+  const descContent = descTag && (descTag[0].match(/content=["']([^"']*)["']/i) || [])[1];
+  if (!descContent || !descContent.trim()) {
+    warnings.push("The page has no usable meta description — Google will write its own. Add one before publishing.");
   }
 
   // Figures to verify. First in importance but listed here so the length check
@@ -5791,7 +5818,7 @@ ${clean}`,
     //  3. stale year — pure text substitution on title surfaces, order-neutral,
     //     so it runs last where it cannot disturb the two structural passes
     const runOutputGuards = (html, { siteBase, linkPool, homepageUrl, cta }) => {
-      let out = html;
+      let out = repairMetaTags(html);
       out = enforceLinkRelevance(out, siteBase, linkPool);
       out = ensureCtaButton(out, homepageUrl, cta);
       out = stripStaleYearInTitles(out);
