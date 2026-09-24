@@ -1952,6 +1952,39 @@ export default function RankActions() {
     if (userId && selectedSite && !isPlaceholderSite(selectedSite) && screen !== "onboarding") fetchSiteData();
   }, [userId, selectedSite]);
 
+  // ── Live page checks for the Issues list ────────────────────────
+  // The Issues tab used to state "No meta description set" and "Missing ...
+  // schema" without looking at any page: it labelled low-CTR pages as missing
+  // descriptions and guessed schema from the URL. Read each candidate page's
+  // real meta and structured data via /api/page-meta (cached for 6 hours in
+  // the worker) so getIssuesData reports only what was actually found.
+  const [pageChecks, setPageChecks] = useState({ site: null, pending: false, byUrl: {} });
+  useEffect(() => {
+    if (!selectedSite || isPlaceholderSite(selectedSite)) return;
+    const urls = (siteData?.pages || [])
+      .filter(p => isAuditablePage(p.page))
+      .slice(0, 6)
+      .map(p => p.page);
+    if (!urls.length) { setPageChecks({ site: selectedSite, pending: false, byUrl: {} }); return; }
+    let cancelled = false;
+    setPageChecks({ site: selectedSite, pending: true, byUrl: {} });
+    Promise.all(urls.map(async (url) => {
+      try {
+        const res = await authFetch(`${WORKER_URL}/api/page-meta`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        if (!res.ok) return [url, { ok: false }];
+        const pm = await res.json();
+        return [url, pm && pm.ok ? pm : { ok: false }];
+      } catch { return [url, { ok: false }]; }
+    })).then(entries => {
+      if (!cancelled) setPageChecks({ site: selectedSite, pending: false, byUrl: Object.fromEntries(entries) });
+    });
+    return () => { cancelled = true; };
+  }, [siteData, selectedSite]);
+
   // ── Reload per-site state when site changes ─────────────────
   useEffect(() => {
     if (!selectedSite) return;
@@ -2293,117 +2326,103 @@ export default function RankActions() {
     // none of those recommendations apply to non-HTML resources.
     const pagesPool = (data?.pages || []).filter(p => isAuditablePage(p.page));
 
-    // Use real low-CTR pages from GSC if available
+    const toPath = (u) => u.replace(/^https?:\/\/[^/]+/, "") || "/";
+    // Only report what the live checks for THIS site actually found. Pages not
+    // yet checked, or that could not be fetched, make no claim either way.
+    const checks = pageChecks.site === site ? pageChecks.byUrl : {};
+    const checked = (p) => checks[p.page] && checks[p.page].ok;
+
+    // Low click-through rate is a real Search Console measurement, so it is
+    // reported as what it is — not relabelled as a missing description.
+    const avgCtr = data?.totals?.avgCtr || 0;
     const lowCtrPages = pagesPool
       .filter(p => parseFloat(p.ctr) < 0.02 && p.clicks > 5)
       .slice(0, 4)
       .map(p => ({
-        url:      p.page.replace(/^https?:\/\/[^/]+/,"") || "/",
-        detail:   `No meta description set · CTR ${(p.ctr*100).toFixed(1)}% (avg ${(data.totals.avgCtr*100).toFixed(1)}%)`,
+        url:      toPath(p.page),
+        pageUrl:  p.page,
+        detail:   `CTR ${(p.ctr*100).toFixed(1)}% against a site average of ${(avgCtr*100).toFixed(1)}%`,
         priority: p.clicks > 50 ? "high" : "medium",
       }));
 
-    const slowPages = [...pagesPool]
-      .sort((a,b) => b.impressions - a.impressions)
+    const candidates = pagesPool.slice(0, 6);
+
+    const metaPages = candidates
+      .filter(p => checked(p) && !String(checks[p.page].metaDesc || "").trim())
+      .map(p => ({
+        url:      toPath(p.page),
+        pageUrl:  p.page,
+        detail:   "No meta description found on the live page",
+        priority: p.clicks > 50 ? "high" : "medium",
+      }));
+
+    // hasSchema === false only. Undefined means the check predates schema
+    // detection (worker cache) and must not be read as "missing".
+    const schemaPages = candidates
+      .filter(p => checked(p) && checks[p.page].hasSchema === false)
+      .map((p, i) => {
+        const path = toPath(p.page).toLowerCase();
+        const suggested = path === "/"                  ? "LocalBusiness or Organization"
+                        : path.includes("service")      ? "Service"
+                        : path.includes("about")        ? "Organization"
+                        : path.includes("contact")      ? "ContactPage"
+                        : path.includes("blog") || path.includes("post") ? "Article"
+                        : path.includes("faq")          ? "FAQPage"
+                        : path.includes("product")      ? "Product"
+                        : "WebPage";
+        return {
+          url:      toPath(p.page),
+          pageUrl:  p.page,
+          detail:   `No structured data found — suggested: ${suggested} schema`,
+          priority: i < 2 ? "high" : "medium",
+        };
+      });
+
+    // Speed is not measured here, so it is framed as a check to run, not a
+    // finding. The two highest-traffic pages are where it matters most.
+    const speedPages = [...pagesPool]
+      .sort((a, b) => b.impressions - a.impressions)
       .slice(0, 2)
       .map(p => ({
-        url:    p.page.replace(/^https?:\/\/[^/]+/,"") || "/",
-        detail: `High traffic page — run a Page Audit for Core Web Vitals and speed recommendations`,
+        url:      toPath(p.page),
+        pageUrl:  p.page,
+        detail:   "High-traffic page — run a Page Audit for Core Web Vitals and speed",
         priority: "medium",
       }));
 
-    // Use real pages from GSC for schema and broken links if available
-    const realPages = pagesPool.slice(0, 6).map(p => ({
-      url:      p.page.replace(/^https?:\/\/[^/]+/, "") || "/",
-      clicks:   p.clicks,
-      impressions: p.impressions,
-    }));
-
-    const metaPages = lowCtrPages.length > 0 ? lowCtrPages : (
-      realPages.length > 0
-        ? realPages.slice(0, 4).map(p => ({ url: p.url, detail: "No meta description set", priority: p.clicks > 50 ? "high" : "medium" }))
-        : [
-            { url:`/services/`,     detail:"No meta description set",     priority:"high"   },
-            { url:`/about/`,        detail:"No meta description set",     priority:"high"   },
-            { url:`/contact/`,      detail:"No meta description set",     priority:"medium" },
-            { url:`/blog/`,         detail:"No meta description set",     priority:"medium" },
-          ]
-    );
-
-    const speedPages = slowPages.length > 0 ? slowPages : (
-      realPages.length > 0
-        ? realPages.slice(0, 2).map(p => ({ url: p.url, detail: "Run a Page Audit for speed score and Core Web Vitals", priority: "medium" }))
-        : [
-            { url:`/`,          detail:"Run a Page Audit for speed score and Core Web Vitals", priority:"medium" },
-            { url:`/services/`, detail:"Run a Page Audit for speed score and Core Web Vitals", priority:"medium" },
-          ]
-    );
-
-    const brokenPages = realPages.length > 0
-      ? realPages.slice(0, 2).map(p => ({
-          url:      p.url,
-          detail:   `Check internal links on this page — verify manually or connect a crawler`,
-          priority: "medium",
-        }))
-      : [
-          { url:`/blog/`,    detail:`Check internal links — verify manually`, priority:"medium" },
-          { url:`/about/`,   detail:`Check internal links — verify manually`, priority:"low"    },
-        ];
-
-    const schemaPages = realPages.length > 0
-      ? realPages.slice(0, 4).map((p, i) => {
-          const path = p.url.toLowerCase();
-          const schemaType = path === "/" || path === ""           ? "LocalBusiness schema"
-                           : path.includes("service")             ? "Service schema"
-                           : path.includes("about")               ? "Organization schema"
-                           : path.includes("contact")             ? "ContactPage schema"
-                           : path.includes("blog") || path.includes("post") ? "Article schema"
-                           : path.includes("faq")                 ? "FAQPage schema"
-                           : path.includes("product")             ? "Product schema"
-                           : "WebPage schema";
-          return {
-            url:      p.url,
-            detail:   `Missing: ${schemaType}`,
-            priority: i < 2 ? "high" : "medium",
-          };
-        })
-      : [
-          { url:`/`,          detail:`Missing: LocalBusiness schema`,  priority:"high"   },
-          { url:`/services/`, detail:`Missing: Service schema`,        priority:"high"   },
-          { url:`/about/`,    detail:`Missing: Organization schema`,   priority:"medium" },
-          { url:`/contact/`,  detail:`Missing: ContactPage schema`,    priority:"low"    },
-        ];
-
+    // No placeholder pages and no broken-links entry: nothing here crawls
+    // links, and inventing /services/ or /about/ for a site that may not have
+    // them is exactly the kind of claim this list must not make.
     return [
       {
         t:"error", icon:"⚠", label:"Missing meta descriptions",
         fixCategory:"meta",
-        summary:`${metaPages.length} pages on ${site} have no meta description — Google writes its own, often poorly.`,
+        summary:`${metaPages.length} ${metaPages.length === 1 ? "page" : "pages"} on ${site} ${metaPages.length === 1 ? "has" : "have"} no meta description — checked on the live page. Google writes its own, often poorly.`,
         fix:"Write a unique 145-155 character meta description for each page to improve click-through rate.",
         pages: metaPages,
       },
       {
-        t:"warning", icon:"⏱", label:"Slow page speed",
-        fixCategory:"pagespeed",
-        summary:`Key pages on ${site} may load slowly on mobile — Google uses mobile speed as a ranking factor. Use Page Audit for detailed scores.`,
-        fix:"Compress images, enable lazy loading and remove unused JavaScript to improve load time. Run a Page Audit on any URL for Core Web Vitals and specific recommendations.",
-        pages: speedPages,
+        t:"warning", icon:"⚠", label:"Low click-through rate",
+        fixCategory:"meta", plainKey:"lowctr",
+        summary:`These pages are seen in Google but clicked less than the rest of ${site}. The title and description are the usual cause.`,
+        fix:"Rewrite the title tag and meta description to match what searchers want, with the keyword early and a clear reason to click.",
+        pages: lowCtrPages,
       },
       {
-        t:"warning", icon:"🔗", label:"Broken internal links",
-        fixCategory:"broken_links",
-        summary:`Potential broken links detected on ${site} — connect a crawler to verify.`,
-        fix:"Check each link and update or remove any that return 404 errors.",
-        pages: brokenPages,
-      },
-      {
-        t:"info", icon:"📋", label:"Missing schema markup",
+        t:"info", icon:"ℹ", label:"Missing schema markup",
         fixCategory:"schema",
-        summary:`Pages on ${site} are missing structured data — schema helps Google show rich results.`,
-        fix:"Add LocalBusiness, Service or FAQ schema to help Google understand your pages better.",
+        summary:`No structured data was found on these pages of ${site}. Schema helps Google show rich results.`,
+        fix:"Add the suggested schema type to each page. Test it with Google's Rich Results Test before publishing.",
         pages: schemaPages,
       },
-    ];
+      {
+        t:"info", icon:"⚡", label:"Check page speed",
+        fixCategory:"pagespeed",
+        summary:`Speed is not measured on this list. Run a Page Audit on your busiest pages for Core Web Vitals.`,
+        fix:"Compress images, enable lazy loading and remove unused JavaScript. Page Audit gives page-specific recommendations.",
+        pages: speedPages,
+      },
+    ].filter(issue => issue.pages.length > 0);
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -2578,6 +2597,9 @@ Site: ${selectedSite}
 Page: ${pageUrl}
 Top ranking keywords for this site: ${topKwsShort}
 ${currentStateBlock}
+WORDING: the keywords above are raw search queries and are often ungrammatical as typed. Use their words,
+in order, but write natural English — add up to two small connecting words where needed and capitalise
+naturally. Never paste an ungrammatical query in verbatim.
 Return ONLY valid JSON — no markdown, no preamble:
 {
   "option1": "ready-to-use title tag — primary keyword in the first 50-60 chars, can extend to ~100 chars if accuracy and click appeal benefit; keyword-rich, compelling",
@@ -2638,7 +2660,10 @@ Current ranking position: ${fix.m1}
 Goal: ${fix.m2}
 Fix type: ${fix.type} — ${fix.field}
 CRITICAL RULES:
-- Every suggestion MUST include the exact phrase "${keyword}"
+- Every suggestion MUST contain the words of "${keyword}" in the same order. Use the exact phrase where it
+  reads as natural English. Search queries are often ungrammatical as typed ("improve rank in google") —
+  when the exact phrase would read badly, add up to two small connecting words between its words
+  ("improve your rank in Google") and capitalise naturally. Never paste an ungrammatical query verbatim.
 - No generic language — make it specific to "${keyword}"
 - Title tags: primary keyword in the first 50-60 characters for SERP visibility; total length can extend to ~100 characters where the extra words add accuracy or click appeal. Don't pad for length; don't force unnatural brevity. Accuracy beats arbitrary character limits.
 - Meta descriptions: 145-155 characters maximum
@@ -3284,7 +3309,8 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
   // Plain-language framing per issue category. Kept short, warm, jargon-free.
   const SPROUT_PLAIN = {
     meta: (pg) => `Your ${pg.url} page has no meta description — that's the short summary Google shows under your link in search results. Adding one helps people decide to click.`,
-    pagespeed: (pg) => `Your ${pg.url} page may be loading slowly, especially on phones. Faster pages keep visitors around and Google prefers them.`,
+    lowctr: (pg) => `Your ${pg.url} page shows up in Google but gets clicked less than your other pages. A sharper title and description usually fixes that.`,
+    pagespeed: (pg) => `Your ${pg.url} page gets a lot of visitors, so it's worth checking how fast it loads, especially on phones. Faster pages keep visitors around and Google prefers them.`,
     broken_links: (pg) => `There's a link on your ${pg.url} page that leads to a page that no longer exists. Fixing it keeps visitors from hitting dead ends.`,
     schema: (pg) => `Your ${pg.url} page is missing some behind-the-scenes labels that help Google understand it. Adding them can make your listing stand out.`,
   };
@@ -3308,7 +3334,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           url: pg.url,
           detail: pg.detail,
           priority: pg.priority || "medium",
-          plain: SPROUT_PLAIN[issue.fixCategory]?.(pg) || `This one's on your ${pg.url} page. ${issue.fix}`,
+          plain: SPROUT_PLAIN[issue.plainKey || issue.fixCategory]?.(pg) || `This one's on your ${pg.url} page. ${issue.fix}`,
           modalPayload: {
             id: `issue-${gi}-${pi}`,
             level: pg.priority === "high" ? "high" : "medium",
@@ -3324,6 +3350,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
             recommended: issue.fix,
             metaDesc: null,
             page: pg.url,
+            pageUrl: pg.pageUrl,
             fixCategory: issue.fixCategory,
           },
         });
@@ -4045,7 +4072,12 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         {activeTab==="Issues" && <>
           <div className="section-head" style={{marginBottom:"1.25rem"}}>
             <div className="section-title">Technical Issues</div>
-            <div className="section-sub">{getIssuesData(selectedSite,siteData).reduce((a,i)=>a+i.pages.length,0)} affected pages across {getIssuesData(selectedSite,siteData).length} issue types</div>
+            <div className="section-sub">
+              {pageChecks.pending && pageChecks.site === selectedSite
+                ? "Checking your pages live… "
+                : ""}
+              {getIssuesData(selectedSite,siteData).reduce((a,i)=>a+i.pages.length,0)} affected pages across {getIssuesData(selectedSite,siteData).length} issue types
+            </div>
           </div>
           <div className="issues-list">
             {getIssuesData(selectedSite,siteData).map((issue,i)=>{
@@ -4095,6 +4127,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
                             recommended: issue.fix,
                             metaDesc: null,
                             page: pg.url,
+                            pageUrl: pg.pageUrl,
                             fixCategory: issue.fixCategory,
                           })}>✨ Fix</button>
                         </div>
@@ -5197,6 +5230,30 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     // still publishable; these tell the user what to look at first.
     const [warnings,  setWarnings]  = useState([]);
 
+    // Business name for schema author/publisher. Every article used to name the
+    // domain here — the prompt told it to — so the validator's schema warning
+    // fired on every generation. Stored per site as `site_profile`; if nothing
+    // is stored yet, the name given in the Starting Out wizard is used.
+    const [bizName,   setBizName]   = useState("");
+    const savedBizNameRef = useRef("");
+    useEffect(() => {
+      let cancelled = false;
+      setBizName(""); savedBizNameRef.current = "";
+      if (!selectedSite || isPlaceholderSite(selectedSite)) return;
+      (async () => {
+        try {
+          const prof = await loadUserData(selectedSite, "site_profile");
+          let name = (prof && typeof prof.businessName === "string") ? prof.businessName.trim() : "";
+          if (!name) {
+            const wiz = await loadUserData(selectedSite, "starting_out");
+            name = (wiz && wiz.profile && typeof wiz.profile.businessName === "string") ? wiz.profile.businessName.trim() : "";
+          }
+          if (!cancelled && name) { setBizName(name); savedBizNameRef.current = name; }
+        } catch { /* no stored name is fine; the field is simply empty */ }
+      })();
+      return () => { cancelled = true; };
+    }, [selectedSite]);
+
     const loadMsgs = [
       "Researching your keyword…",
       "Writing SEO-optimised content…",
@@ -5449,6 +5506,14 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       // give a per-section floor and scale the section count to the target
       // rather than asking for "4-6 H2 sections" whatever the length.
       const targetWords  = parseTargetWords(wordCount, 1000);
+
+      // Remember the business name for this site the first time it is used or
+      // whenever it changes. Fire-and-forget: a failed save never blocks writing.
+      const bizNameClean = (bizName || "").trim();
+      if (bizNameClean && bizNameClean !== savedBizNameRef.current && !isPlaceholderSite(selectedSite)) {
+        savedBizNameRef.current = bizNameClean;
+        try { Promise.resolve(saveUserData(selectedSite, "site_profile", { businessName: bizNameClean })).catch(() => {}); } catch { /* never blocks generation */ }
+      }
       const sectionCount = targetWords <= 800  ? 3
                          : targetWords <= 1200 ? 4
                          : targetWords <= 1800 ? 5
@@ -5520,7 +5585,7 @@ KEYWORD PLACEMENT — MANDATORY (this is an SEO tool, the article must pass an S
 - Use the keyword EXACTLY as written above — same wording, same word order. Do not paraphrase, do not synonymise, do not abbreviate. If the keyword has an awkward word order, you must still use it verbatim.
 
 BUILD THIS STRUCTURE:
-1. HEAD: title tag (primary keyword "${kw.trim()}" in the first 50-60 chars for SERP visibility, total title can extend up to ~100 chars if needed for clarity and click appeal), meta description (145-155 chars, MUST include "${kw.trim()}"), canonical URL (${siteBase}/[keyword-slug]/), robots, Open Graph tags (og:title MUST include "${kw.trim()}"), JSON-LD Article schema — it MUST contain headline, description, datePublished AND dateModified both set to EXACTLY "${todayIso}" (never invent or recall a date), plus BOTH an author and a publisher object naming the client (${displaySite(selectedSite)}) — the Google Fonts link, and a <style> block with the CSS above
+1. HEAD: title tag (primary keyword "${kw.trim()}" in the first 50-60 chars for SERP visibility, total title can extend up to ~100 chars if needed for clarity and click appeal), meta description (145-155 chars, MUST include "${kw.trim()}"), canonical URL (${siteBase}/[keyword-slug]/), robots, Open Graph tags (og:title MUST include "${kw.trim()}"), JSON-LD Article schema — it MUST contain headline, description, datePublished AND dateModified both set to EXACTLY "${todayIso}" (never invent or recall a date), plus BOTH an author and a publisher object of @type Organization whose "name" is exactly "${(bizName || "").trim() || displaySite(selectedSite)}" — the Google Fonts link, and a <style> block with the CSS above
 2. HEADER BAR: dark, with the two-tone "RankActions" wordmark on the left (white "Rank" + green "Actions", Barlow Condensed weight 500) and "Generated for ${displaySite(selectedSite)}" on the right in small cream text
 3. HERO SECTION: H1 containing the exact verbatim phrase "${kw.trim()}", followed by a subtitle, author byline, date, read time
 4. ARTICLE BODY:
@@ -5622,7 +5687,7 @@ ${clean}`,
           targetWords,
           // Anything the user typed counts as supplied, so their own prices
           // and figures are never flagged back at them.
-          suppliedText: [kw, biz, cta, notes].join(" "),
+          suppliedText: [kw, biz, bizName, cta, notes].join(" "),
         }));
 
         // Completeness check. Longform generations can hit the token ceiling and
@@ -5753,6 +5818,14 @@ ${clean}`,
                     💡 Suggested from your dashboard: "{suggestedKw}" — click to use
                   </div>
                 )}
+              </div>
+              <div className="cg-field">
+                <label>Business name</label>
+                <input placeholder="e.g. E2E Integration"
+                  value={bizName} onChange={e=>setBizName(e.target.value)}/>
+                <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
+                  Used as the article's author and publisher. Saved for this site.
+                </div>
               </div>
               <div className="cg-field">
                 <label>Business / niche</label>
