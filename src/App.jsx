@@ -1959,12 +1959,22 @@ export default function RankActions() {
   // real meta and structured data via /api/page-meta (cached for 6 hours in
   // the worker) so getIssuesData reports only what was actually found.
   const [pageChecks, setPageChecks] = useState({ site: null, pending: false, byUrl: {} });
+  // Site data stores each page as a PATH ("/blog/x"). Build the address from
+  // the site's own domain plus that path — the same construction the Fix modal
+  // uses — so the worker's ownership check sees a domain in this account.
+  // Sending the bare path produced "https:///blog/x": rejected as an invalid
+  // URL, or read as a site called "blog" and refused as not owned.
+  const livePageUrl = (site, page) => {
+    const pg = String(page || "/");
+    if (/^https?:\/\//i.test(pg)) return pg;
+    return `https://${displaySite(site)}${pg.startsWith("/") ? pg : "/" + pg}`;
+  };
   useEffect(() => {
     if (!selectedSite || isPlaceholderSite(selectedSite)) return;
     const urls = (siteData?.pages || [])
       .filter(p => isAuditablePage(p.page))
       .slice(0, 6)
-      .map(p => p.page);
+      .map(p => livePageUrl(selectedSite, p.page));
     if (!urls.length) { setPageChecks({ site: selectedSite, pending: false, byUrl: {} }); return; }
     let cancelled = false;
     setPageChecks({ site: selectedSite, pending: true, byUrl: {} });
@@ -2330,7 +2340,8 @@ export default function RankActions() {
     // Only report what the live checks for THIS site actually found. Pages not
     // yet checked, or that could not be fetched, make no claim either way.
     const checks = pageChecks.site === site ? pageChecks.byUrl : {};
-    const checked = (p) => checks[p.page] && checks[p.page].ok;
+    const urlOf = (p) => livePageUrl(site, p.page);
+    const checked = (p) => checks[urlOf(p)] && checks[urlOf(p)].ok;
 
     // Low click-through rate is a real Search Console measurement, so it is
     // reported as what it is — not relabelled as a missing description.
@@ -2340,7 +2351,7 @@ export default function RankActions() {
       .slice(0, 4)
       .map(p => ({
         url:      toPath(p.page),
-        pageUrl:  p.page,
+        pageUrl:  urlOf(p),
         detail:   `CTR ${(p.ctr*100).toFixed(1)}% against a site average of ${(avgCtr*100).toFixed(1)}%`,
         priority: p.clicks > 50 ? "high" : "medium",
       }));
@@ -2348,10 +2359,10 @@ export default function RankActions() {
     const candidates = pagesPool.slice(0, 6);
 
     const metaPages = candidates
-      .filter(p => checked(p) && !String(checks[p.page].metaDesc || "").trim())
+      .filter(p => checked(p) && !String(checks[urlOf(p)].metaDesc || "").trim())
       .map(p => ({
         url:      toPath(p.page),
-        pageUrl:  p.page,
+        pageUrl:  urlOf(p),
         detail:   "No meta description found on the live page",
         priority: p.clicks > 50 ? "high" : "medium",
       }));
@@ -2359,7 +2370,7 @@ export default function RankActions() {
     // hasSchema === false only. Undefined means the check predates schema
     // detection (worker cache) and must not be read as "missing".
     const schemaPages = candidates
-      .filter(p => checked(p) && checks[p.page].hasSchema === false)
+      .filter(p => checked(p) && checks[urlOf(p)].hasSchema === false)
       .map((p, i) => {
         const path = toPath(p.page).toLowerCase();
         const suggested = path === "/"                  ? "LocalBusiness or Organization"
@@ -2372,7 +2383,7 @@ export default function RankActions() {
                         : "WebPage";
         return {
           url:      toPath(p.page),
-          pageUrl:  p.page,
+          pageUrl:  urlOf(p),
           detail:   `No structured data found — suggested: ${suggested} schema`,
           priority: i < 2 ? "high" : "medium",
         };
@@ -2385,7 +2396,7 @@ export default function RankActions() {
       .slice(0, 2)
       .map(p => ({
         url:      toPath(p.page),
-        pageUrl:  p.page,
+        pageUrl:  urlOf(p),
         detail:   "High-traffic page — run a Page Audit for Core Web Vitals and speed",
         priority: "medium",
       }));
@@ -4073,11 +4084,32 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           <div className="section-head" style={{marginBottom:"1.25rem"}}>
             <div className="section-title">Technical Issues</div>
             <div className="section-sub">
-              {pageChecks.pending && pageChecks.site === selectedSite
-                ? "Checking your pages live… "
-                : ""}
               {getIssuesData(selectedSite,siteData).reduce((a,i)=>a+i.pages.length,0)} affected pages across {getIssuesData(selectedSite,siteData).length} issue types
             </div>
+            {(() => {
+              // Say what was checked, not just what failed. Without this a
+              // failed check and a clean site look identical — which is how
+              // six sites showed only "Check page speed" while every live
+              // check had in fact been rejected.
+              if (pageChecks.site !== selectedSite) return null;
+              if (pageChecks.pending) return <div className="section-sub">Checking your pages live…</div>;
+              const results = Object.values(pageChecks.byUrl || {});
+              if (!results.length) return null;
+              const ok = results.filter(r => r && r.ok);
+              const failed = results.length - ok.length;
+              const noDesc = ok.filter(r => !String(r.metaDesc || "").trim()).length;
+              const schemaKnown = ok.filter(r => typeof r.hasSchema === "boolean");
+              const noSchema = schemaKnown.filter(r => r.hasSchema === false).length;
+              const parts = [];
+              if (ok.length) {
+                parts.push(`Checked ${ok.length} ${ok.length === 1 ? "page" : "pages"} live`);
+                if (noDesc === 0) parts.push("all have meta descriptions");
+                if (schemaKnown.length === ok.length && noSchema === 0) parts.push("all have structured data");
+              }
+              if (failed) parts.push(`couldn't reach ${failed} of ${results.length}, so ${failed === 1 ? "it wasn't" : "they weren't"} checked`);
+              const text = parts.join(" — ");
+              return <div className="section-sub">{text.charAt(0).toUpperCase() + text.slice(1)}.</div>;
+            })()}
           </div>
           <div className="issues-list">
             {getIssuesData(selectedSite,siteData).map((issue,i)=>{
