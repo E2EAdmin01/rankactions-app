@@ -1228,6 +1228,9 @@ function readStrategyCache(site) {
 
 // Body words only, the same measure validateGeneratedHtml uses, so the
 // expansion decision and the warning the user sees can never disagree.
+// See the calibration note where aimWords is defined in the generator.
+const LENGTH_CALIBRATION = 0.8;
+
 function countArticleWords(html) {
   return bodyProseText(html).split(/\s+/).filter(Boolean).length;
 }
@@ -1238,6 +1241,10 @@ function countArticleWords(html) {
 // That is 60-100 words of boilerplate, over 10% of a 600-word target on its own.
 // Falls back to <body> without header/nav/footer if there is no <article>.
 function bodyProseText(html) {
+  return articleText(bodyRegionHtml(html));
+}
+
+function bodyRegionHtml(html) {
   const src = String(html || "");
   const art = src.match(/<article[^>]*>([\s\S]*)<\/article>/i);
   let region;
@@ -1251,7 +1258,7 @@ function bodyProseText(html) {
       .replace(/<footer[\s\S]*?<\/footer>/gi, " ");
   }
   region = region.replace(/<div[^>]*class=["'][^"']*cta-section[^"']*["'][^>]*>[\s\S]*?<\/div>/gi, " ");
-  return articleText(region);
+  return region;
 }
 
 function articleText(html) {
@@ -1275,6 +1282,34 @@ function kwPresent(kw, text) {
   return !!k && !!t && t.includes(k);
 }
 
+// The keyword's words in order, allowing up to `maxGap` other words between
+// each pair. "GDPR Compliance Services for UK Businesses" contains
+// "GDPR compliance services UK" the way a reader (and Google) sees it; a strict
+// substring check called that missing and fired on every natural headline.
+// Order still matters ("UK GDPR Compliance Services" fails) and so does
+// proximity ("GDPR and data protection compliance..." fails at a gap of 3).
+function kwNear(kw, text, maxGap = 2) {
+  if (!kw || !text) return false;
+  const norm = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const k = norm(kw).split(" ").filter(Boolean);
+  const t = norm(text).split(" ").filter(Boolean);
+  if (!k.length || !t.length) return false;
+  for (let start = 0; start < t.length; start++) {
+    if (t[start] !== k[0]) continue;
+    let pos = start, ok = true;
+    for (let i = 1; i < k.length; i++) {
+      let found = -1;
+      for (let j = pos + 1; j <= Math.min(t.length - 1, pos + 1 + maxGap); j++) {
+        if (t[j] === k[i]) { found = j; break; }
+      }
+      if (found === -1) { ok = false; break; }
+      pos = found;
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
 function escapeRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 function validateGeneratedHtml(html, { keyword, targetWords } = {}) {
@@ -1286,13 +1321,17 @@ function validateGeneratedHtml(html, { keyword, targetWords } = {}) {
     const title = tagInner(html, "title");
     const h1 = tagInner(html, "h1");
     if (title && !kwPresent(kw, title)) warnings.push(`The title tag doesn't contain "${kw}".`);
-    if (h1 && !kwPresent(kw, h1)) warnings.push(`The H1 doesn't contain "${kw}".`);
+    if (h1 && !kwNear(kw, h1)) warnings.push(`The H1 doesn't contain "${kw}".`);
 
     // Case drift. Only meaningful when the keyword itself carries capitals —
     // an all-lowercase keyword has nothing to drift from. Threshold of 3 keeps
     // a single stylistic lowercase from raising a warning.
     if (/[A-Z]/.test(kw)) {
-      const all = articleText(html).match(new RegExp(escapeRe(kw).replace(/\s+/g, "\\s+"), "gi")) || [];
+      // Body prose only. Title case is correct in the title tag, the H1 and
+      // H2/H3 headings, and counting those made this fire on every article.
+      // The machine-written tell is title case mid-sentence in a paragraph.
+      const prose = articleText(bodyRegionHtml(html).replace(/<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>/gi, " "));
+      const all = prose.match(new RegExp(escapeRe(kw).replace(/\s+/g, "\\s+"), "gi")) || [];
       const wrong = all.filter(m => m.replace(/\s+/g, " ") !== kw.replace(/\s+/g, " "));
       if (wrong.length >= 3) {
         warnings.push(`"${kw}" appears ${wrong.length} times with different capitalisation (e.g. "${wrong[0]}") — it reads as machine-written.`);
@@ -5364,7 +5403,14 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
                          : targetWords <= 2400 ? 6
                          : 7;
       // Intro and CTA take roughly 15% between them; the rest splits evenly.
-      const perSection   = Math.round((targetWords * 0.85) / sectionCount / 10) * 10;
+      // Calibration. With a ceiling in the prompt the model follows the target
+      // but consistently overshoots it: 600 -> 712, 1000 -> 1294, 1500 -> 1868
+      // on 23 Sep 2026 (+19%, +29%, +25%; mean ~24%). So the prompt asks for
+      // LENGTH_CALIBRATION of what the user chose. The user's target is still
+      // what the validator measures against, so the check is no softer — this
+      // only corrects a model that reads consistently high.
+      const aimWords     = Math.round((targetWords * LENGTH_CALIBRATION) / 10) * 10;
+      const perSection   = Math.round((aimWords * 0.85) / sectionCount / 10) * 10;
 
       const pillarContext = preset?.pillarUrl
         ? `\nPILLAR PAGE — this article is a cluster post supporting a pillar page. Include exactly ONE contextual link back to it, placed where it reads naturally (usually near the conclusion), with descriptive anchor text about the pillar's topic:\n- ${preset.pillarUrl}${preset.pillarTitle ? ` ("${preset.pillarTitle}")` : ""}\nThis pillar link is in addition to the internal link rules below and does not count towards the 0-4 limit.\n`
@@ -5389,7 +5435,7 @@ INPUTS:
 - Target keyword: "${kw.trim()}"
 - Business/niche: ${biz.trim() || "general business"}
 - Tone: ${tone}
-- Target word count: ${targetWords} words — see LENGTH REQUIREMENT below; this is not optional
+- Target word count: ${aimWords} words — see LENGTH REQUIREMENT below; this is not optional
 - Primary CTA: ${cta.trim() || "Contact us to find out more"}
 - Additional notes: ${notes.trim() || "none"}
 - Client website: ${displaySite(selectedSite)}
@@ -5442,10 +5488,10 @@ BUILD THIS STRUCTURE:
 6. FOOTER BAR: dark, centered, "Generated by RankActions — AI-powered SEO content" with "rankactions.com" linked in green #1ea863
 
 LENGTH REQUIREMENT — MANDATORY:
-Target: ${targetWords} words of body prose, counted inside the article only (excluding HTML, CSS,
+Target: ${aimWords} words of body prose, counted inside the article only (excluding HTML, CSS,
 the header and footer bars, the hero and the CTA). The acceptable range is
-${Math.round(targetWords * 0.9)}–${Math.round(targetWords * 1.1)} words. Writing MORE than ${Math.round(targetWords * 1.1)} words
-is as much a failure as writing fewer than ${Math.round(targetWords * 0.9)} — the reader asked for this length.
+${Math.round(aimWords * 0.9)}–${Math.round(aimWords * 1.1)} words. Writing MORE than ${Math.round(aimWords * 1.1)} words
+is as much a failure as writing fewer than ${Math.round(aimWords * 0.9)} — the reader asked for this length.
 That is ${sectionCount} sections of about ${perSection} words each. Use the words for depth, not padding:
 worked examples, common mistakes, what to do first, how long it takes.
 Do NOT state specific prices, fees, statistics or percentages unless they appear in the details above —
