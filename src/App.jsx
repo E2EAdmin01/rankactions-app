@@ -871,7 +871,7 @@ const SEO_TIPS = {
   openGraph: "Tags that control how your page looks when shared on social media (Facebook, LinkedIn, Twitter). Includes the title, description, and image shown.",
   internalLinks: "Links from one page on your site to another page on your site. They help visitors navigate and help Google discover and rank all your pages.",
   backlinks: "Links from other websites pointing to yours. Google treats these as votes of confidence — more quality backlinks generally means higher rankings.",
-  pillarPage: "A comprehensive, long-form page (2,000-3,000 words) that covers a broad topic in depth. It acts as the central hub that cluster posts link back to.",
+  pillarPage: "A comprehensive, long-form page (usually 1,500 words or more) that covers a broad topic in depth. It acts as the central hub that cluster posts link back to.",
   clusterPost: "A shorter blog post (800-1,200 words) that covers a specific subtopic in detail and links back to the pillar page. Together they build topical authority.",
   topicalAuthority: "When Google sees your site as an expert on a topic because you have multiple, interlinked pages covering it thoroughly. Leads to higher rankings for the whole cluster.",
   haro: "Help A Reporter Out — a free platform where journalists post requests for expert quotes. If you respond and get quoted, you usually get a backlink to your site.",
@@ -1091,6 +1091,42 @@ const SEO_FRESHNESS = `FACTUAL ACCURACY — these SEO facts changed recently and
 - "Page Experience" is a set of signals, not a single ranking factor or score.
 - Do not cite specific ranking-factor percentages or algorithm weightings; they are not published. Do not invent statistics, study results or dates. If you are not confident a number is accurate, describe the effect qualitatively instead.`;
 
+// ── Word count ─────────────────────────────────────────────────────
+// One list, used by the generator dropdown and by anything reading a strategy's
+// recommendation. The strategy planner returns ranges as strings ("2000-3000"
+// for a pillar, "800-1200" for a cluster) and the generator needs a single
+// number, so these two must agree — previously the dropdown stopped at 2000 and
+// a 3000-word pillar recommendation had nowhere to go.
+// Capped at 2000 deliberately. Measured on 7 Sep 2026: a 3000-word request
+// produced 1,335 words with the length requirement marked MANDATORY, and the
+// expansion pass took it only to 1,747. The model has a strong prior on total
+// output length for a complete HTML document — roughly 1,300-1,800 words —
+// and instruction does not move it.
+//
+// 2500 and 3000 are therefore not offered: advertising a length the product
+// cannot reach is worse than offering less. 2000 is the practical ceiling and
+// its 1800 floor sits just above the best measured output, so it will
+// sometimes warn. That warning is accurate and worth keeping.
+const WORD_COUNT_OPTIONS = [600, 1000, 1500, 2000];
+
+function snapWordCount(n) {
+  return WORD_COUNT_OPTIONS.reduce((best, o) =>
+    Math.abs(o - n) < Math.abs(best - n) ? o : best, WORD_COUNT_OPTIONS[0]);
+}
+
+// Accepts a number, "1500", "2000-3000", "~2,500 words". Ranges resolve to the
+// midpoint, then snap to the nearest offered option. Anything unparseable or
+// implausible returns the fallback rather than a wild target.
+function parseTargetWords(v, fallback = 1000) {
+  if (v == null) return fallback;
+  if (typeof v === 'number' && isFinite(v)) return snapWordCount(v);
+  const nums = String(v).replace(/,/g, '').match(/\d{3,5}/g);
+  if (!nums || nums.length === 0) return fallback;
+  const vals = nums.map(Number).filter(n => n >= 200 && n <= 10000);
+  if (vals.length === 0) return fallback;
+  return snapWordCount(vals.reduce((a, b) => a + b, 0) / vals.length);
+}
+
 // ── Output guards ────────────────────────────────────────────────
 // Deterministic checks applied to generated output before a customer sees it.
 // Module scope on purpose: stripStaleYear previously lived inside the strategy
@@ -1189,6 +1225,12 @@ function readStrategyCache(site) {
 // written for the SERP click and an H1 written for the page are legitimately
 // different, and warning on that would fire on almost every article and train
 // the user to ignore the panel entirely.
+
+// Body words only, the same measure validateGeneratedHtml uses, so the
+// expansion decision and the warning the user sees can never disagree.
+function countArticleWords(html) {
+  return articleText(html).split(/\s+/).filter(Boolean).length;
+}
 
 function articleText(html) {
   return String(html || "")
@@ -5024,7 +5066,10 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     const [kw,        setKw]        = useState(preset?.kw    || "");
     const [biz,       setBiz]       = useState(preset?.biz   || "");
     const [tone,      setTone]      = useState("professional");
-    const [wordCount, setWordCount] = useState("1000");
+    // Honour the strategy's recommendation when arriving from a plan. Previously
+    // the preset carried the keyword but not the length, so a pillar the planner
+    // said should be 2000-3000 words was generated at the 1000-word default.
+    const [wordCount, setWordCount] = useState(String(parseTargetWords(preset?.wordCount, 1000)));
     const [cta,       setCta]       = useState("");
     const [notes,     setNotes]     = useState(preset?.notes || "");
     const [prefilledKw] = useState(!!preset?.kw);
@@ -5284,6 +5329,21 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       // published URL on the site (see resolvePillarUrl). Without a verified URL
       // we say nothing: "link back to the pillar" with no URL contradicts the
       // no-invented-paths rule, and the model resolves that by inventing one.
+      // Length has to be as emphatic as the keyword rules or the model ignores
+      // it: a 2000-word request came back at 430 words on 7 Sep because the
+      // structure requirements were MANDATORY while the word count was a single
+      // soft line in the inputs list. A total is also abstract while writing, so
+      // give a per-section floor and scale the section count to the target
+      // rather than asking for "4-6 H2 sections" whatever the length.
+      const targetWords  = parseTargetWords(wordCount, 1000);
+      const sectionCount = targetWords <= 800  ? 3
+                         : targetWords <= 1200 ? 4
+                         : targetWords <= 1800 ? 5
+                         : targetWords <= 2400 ? 6
+                         : 7;
+      // Intro and CTA take roughly 15% between them; the rest splits evenly.
+      const perSection   = Math.round((targetWords * 0.85) / sectionCount / 10) * 10;
+
       const pillarContext = preset?.pillarUrl
         ? `\nPILLAR PAGE — this article is a cluster post supporting a pillar page. Include exactly ONE contextual link back to it, placed where it reads naturally (usually near the conclusion), with descriptive anchor text about the pillar's topic:\n- ${preset.pillarUrl}${preset.pillarTitle ? ` ("${preset.pillarTitle}")` : ""}\nThis pillar link is in addition to the internal link rules below and does not count towards the 0-4 limit.\n`
         : "";
@@ -5307,7 +5367,7 @@ INPUTS:
 - Target keyword: "${kw.trim()}"
 - Business/niche: ${biz.trim() || "general business"}
 - Tone: ${tone}
-- Target word count: ~${wordCount} words
+- Target word count: ${targetWords} words — see LENGTH REQUIREMENT below; this is not optional
 - Primary CTA: ${cta.trim() || "Contact us to find out more"}
 - Additional notes: ${notes.trim() || "none"}
 - Client website: ${displaySite(selectedSite)}
@@ -5347,7 +5407,8 @@ BUILD THIS STRUCTURE:
 3. HERO SECTION: H1 containing the exact verbatim phrase "${kw.trim()}", followed by a subtitle, author byline, date, read time
 4. ARTICLE BODY:
    - Opening paragraph: the FIRST SENTENCE must contain the exact phrase "${kw.trim()}" within the first 25 words
-   - 4-6 H2 sections — at least 2 must contain the exact phrase "${kw.trim()}" in the heading text
+   - EXACTLY ${sectionCount} H2 sections, each containing AT LEAST ${perSection} words of body prose — count as you write
+   - Of those, at least 2 must contain the exact phrase "${kw.trim()}" in the heading text
    - At least one H3 subsection
    - One tip/callout box (green border-left)
    - Natural keyword usage — no stuffing, but the exact phrase "${kw.trim()}" should appear 4-8 times in body text
@@ -5357,6 +5418,13 @@ BUILD THIS STRUCTURE:
    <div class="cta-section"><a href="${homepageUrl}" class="cta-button">${cta.trim() || "Get in touch today"}</a></div>
    The .cta-button class must be defined in the <style> block (green background #0e7a3c, white text, padding .9rem 2rem, border-radius 6px, no underline).
 6. FOOTER BAR: dark, centered, "Generated by RankActions — AI-powered SEO content" with "rankactions.com" linked in green #1ea863
+
+LENGTH REQUIREMENT — MANDATORY:
+The finished article MUST contain at least ${Math.round(targetWords * 0.9)} words of body prose,
+excluding HTML, CSS and the header/footer bars. That is ${sectionCount} sections of ${perSection}+ words each.
+Do not stop early. A short article that covers the structure is a FAILED response — depth within each
+section matters more than reaching the end quickly. If a section feels thin, expand it with specifics:
+worked examples, common mistakes, what to do first, what it typically costs, how long it takes.
 
 IMPORTANT — The keyword "${kw.trim()}" MUST appear verbatim in the title, meta description, H1, first sentence, and at least 2 H2s. This is the single most important rule. Label internal links clearly so non-technical users know what they are. Every internal link MUST resolve to a real page (use only URLs from the ALLOWED INTERNAL LINKS list). The page must look professional and on-brand for RankActions while still being a usable blog post the client can publish.`;
 
@@ -5372,9 +5440,62 @@ IMPORTANT — The keyword "${kw.trim()}" MUST appear verbatim in the title, meta
         // stripStaleYear ended up protecting strategy titles but not articles.
         clean = runOutputGuards(clean, { siteBase, linkPool, homepageUrl, cta });
 
+        // ── Expansion pass ────────────────────────────────────────────────
+        // A single pass tops out around 1,300-1,500 words however emphatically
+        // the prompt asks: a 3000-word request came back at 1,335 on 7 Sep even
+        // after the length instruction was made mandatory. Rather than cap the
+        // product at what one pass can do, measure the draft and ask for one
+        // expansion if it is short. (Even with this pass the best measured result
+        // was 1,747 words, which is why WORD_COUNT_OPTIONS now stops at 2000.)
+        //
+        // Exactly one retry. If the second pass is still short the user is told,
+        // not looped: two calls is a predictable cost, an open loop is not.
+        const floor = Math.round(targetWords * 0.9);
+        let words = countArticleWords(clean);
+        if (words < floor) {
+          setLoadMsg(`Expanding to ${targetWords.toLocaleString()} words…`);
+          try {
+            const expanded = await callClaude(
+              `The article below is ${words} words. It must be at least ${floor} words of body prose.
+
+EXPAND IT. Return the COMPLETE article as raw HTML, same structure, same styling, same
+header and footer, same links, same CTA. Do not summarise, do not restructure, do not
+remove anything that is already there.
+
+Add depth inside the existing sections: worked examples, common mistakes, what to do
+first, what it typically costs, how long it takes, what happens if you get it wrong.
+Every H2 section must end up with at least ${perSection} words of prose.
+
+Keep the exact phrase "${kw.trim()}" appearing naturally 4-8 times in total — do not add
+more instances just because the article is longer.
+
+ARTICLE TO EXPAND:
+${clean}`,
+              "Expert SEO content writer. Output ONLY the complete raw HTML article starting with <!DOCTYPE html>. No markdown. No commentary.",
+              "longform"
+            );
+            let expandedClean = expanded.replace(/^```html\s*/i,"").replace(/^```\s*/i,"").replace(/```\s*$/i,"").trim();
+            // Only accept the expansion if it is genuinely longer and still a
+            // complete document. A shorter or truncated second pass is worse
+            // than the first draft, so the original stands.
+            const expandedWords = countArticleWords(expandedClean);
+            const expandedComplete = /<\/html>\s*$/i.test(expandedClean) && /<body/i.test(expandedClean);
+            if (expandedComplete && expandedWords > words) {
+              clean = runOutputGuards(expandedClean, { siteBase, linkPool, homepageUrl, cta });
+              words = countArticleWords(clean);
+            } else {
+              console.warn(`[content] expansion rejected (${expandedWords} words, complete=${expandedComplete}) — keeping first draft`);
+            }
+          } catch (err) {
+            // The first draft is still a usable article. Losing the expansion is
+            // not a reason to lose the generation.
+            console.warn('[content] expansion failed:', err && err.message);
+          }
+        }
+
         // Report what the guards can't fix. Runs before the completeness check
         // so a truncated article still reports its other problems.
-        setWarnings(validateGeneratedHtml(clean, { keyword: kw.trim(), targetWords: Number(wordCount) || 0 }));
+        setWarnings(validateGeneratedHtml(clean, { keyword: kw.trim(), targetWords }));
 
         // Completeness check. Longform generations can hit the token ceiling and
         // stop mid-sentence; the HTML still previews fine until you reach the end.
@@ -5524,10 +5645,9 @@ IMPORTANT — The keyword "${kw.trim()}" MUST appear verbatim in the title, meta
                 <div className="cg-field">
                   <label>Word count</label>
                   <select value={wordCount} onChange={e=>setWordCount(e.target.value)}>
-                    <option value="600">~600 words</option>
-                    <option value="1000">~1,000 words</option>
-                    <option value="1500">~1,500 words</option>
-                    <option value="2000">~2,000 words</option>
+                    {WORD_COUNT_OPTIONS.map(n => (
+                      <option key={n} value={String(n)}>~{n.toLocaleString()} words</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -5546,7 +5666,13 @@ IMPORTANT — The keyword "${kw.trim()}" MUST appear verbatim in the title, meta
                 {loading ? <><span className="spinner-sm"/>{" Generating…"}</> : "✨ Generate article"}
               </button>
               <div className="cg-tip">
-                ⏱ Generation takes 20–40 seconds. Articles are styled with RankActions branding and ready to share. Content is created in your browser and never stored on our servers.
+                {Number(wordCount) >= 2000 ? (
+                  <>⏱ Long articles are written in two passes to reach the full length, so this one takes
+                  <b> around 2 minutes</b>. Shorter articles take 20–40 seconds. Articles are styled with
+                  RankActions branding and ready to share. Content is created in your browser and never stored on our servers.</>
+                ) : (
+                  <>⏱ Generation takes 20–40 seconds. Articles are styled with RankActions branding and ready to share. Content is created in your browser and never stored on our servers.</>
+                )}
               </div>
             </div>
           </div>
@@ -7074,6 +7200,11 @@ Suggest DIFFERENT topics, keywords, and angles from the above.\n`
         // published, so the default is to leave it out entirely.
         const currentYear = new Date().getFullYear();
         const dateRule = `\nDATE RULE: today's date is ${new Date().toISOString().slice(0,10)} (year ${currentYear}). Do NOT put a year in any title unless the topic genuinely requires one (e.g. an annual statistics roundup). If a year is truly needed it MUST be ${currentYear} — never an earlier year. Titles without years stay accurate for longer.\n`;
+        // The JSON example alone does not constrain wordCount: the model picks its
+        // own ranges (it returned "2500-3500" when the example said "2000-3000").
+        // State the allowed range as a rule, built from the same options the
+        // generator offers, so the planner cannot recommend an unreachable length.
+        const wordCountRule = `\nWORD COUNT RULE: every "wordCount" value MUST be a range between ${WORD_COUNT_OPTIONS[0]} and ${WORD_COUNT_OPTIONS[WORD_COUNT_OPTIONS.length - 1]} words, e.g. "1500-2000" for a pillar page and "800-1200" for a cluster post. Never recommend more than ${WORD_COUNT_OPTIONS[WORD_COUNT_OPTIONS.length - 1]} words.`;
 
         const prompt = topic
           ? `I want to build a pillar content strategy around this topic: "${topic}".
@@ -7096,7 +7227,7 @@ Based on this data, suggest a pillar + cluster strategy. Return ONLY valid JSON,
         "keyword": "main target keyword",
         "title": "suggested pillar page title (H1)",
         "description": "2-3 sentence description of what the pillar page should cover",
-        "wordCount": "2000-3000"
+        "wordCount": "1500-2000"
       },
       "clusters": [
         {
@@ -7112,7 +7243,7 @@ Based on this data, suggest a pillar + cluster strategy. Return ONLY valid JSON,
 }
 
 Generate exactly 1 strategy with 6-8 cluster posts. Make sure keywords are specific and realistic for a UK audience.
-${dateRule}`
+${dateRule}${wordCountRule}`
 
           : `Analyse my website data and suggest 3 pillar content strategies I should build.
 
@@ -7135,7 +7266,7 @@ Group my keywords into topic clusters. For each cluster, suggest a pillar + supp
         "keyword": "main target keyword for the pillar page",
         "title": "suggested pillar page title (H1)",
         "description": "2-3 sentence description of what the pillar page should cover",
-        "wordCount": "2000-3000"
+        "wordCount": "1500-2000"
       },
       "clusters": [
         {
@@ -7151,7 +7282,7 @@ Group my keywords into topic clusters. For each cluster, suggest a pillar + supp
 }
 
 Generate exactly 3 strategies, each with 6-8 cluster posts. Pick topics with the highest combined impression volume where I'm currently underperforming. Target UK audience. Be specific — use my actual keywords.
-${dateRule}`;
+${dateRule}${wordCountRule}`;
 
         const txt = await callClaude(prompt,
           "You are an expert SEO content strategist. You specialise in pillar/cluster content strategies for small businesses. Return valid JSON only. No markdown backticks. No text before or after the JSON. Be specific and actionable.",
@@ -7277,12 +7408,15 @@ ${dateRule}`;
     };
 
     // Jump to content generator with prefilled keyword
-    const writeContent = (keyword, title) => {
+    const writeContent = (keyword, title, recommendedWords) => {
       if (!isPro) { setShowUpgrade(true); return; }
       const pillarUrl = resolvePillarUrl();
       contentPresetRef.current = {
         kw: keyword,
         biz: selectedSite,
+        // The planner's recommendation for THIS item — pillar and cluster
+        // targets differ, so pass the item's own value rather than a default.
+        wordCount: recommendedWords,
         notes: `Part of pillar strategy: "${strategy?.topic}". Blog title suggestion: "${title}".`,
         pillarUrl,
         pillarTitle: pillarUrl ? (strategy?.pillar?.title || "") : "",
@@ -7544,7 +7678,7 @@ ${dateRule}`;
                   </div>
                   {strategy.pillar.description && <div style={{ fontSize: ".78rem", color: "var(--text3)", lineHeight: 1.5, marginBottom: ".75rem" }}>{strategy.pillar.description}</div>}
                   <div style={{ display: "flex", gap: ".5rem" }}>
-                    <button onClick={() => writeContent(strategy.pillar.keyword, strategy.pillar.title)}
+                    <button onClick={() => writeContent(strategy.pillar.keyword, strategy.pillar.title, strategy.pillar.wordCount)}
                       style={{ background: "var(--green)", color: "#000", border: "none", borderRadius: 7, padding: ".4rem .85rem", fontSize: ".78rem", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
                       {isPro ? "✍ Write this page" : "🔒 Write (Pro)"}
                     </button>
@@ -7628,7 +7762,7 @@ ${dateRule}`;
                           <option value="drafted">Drafted</option>
                           <option value="published">Published</option>
                         </select>
-                        <button onClick={() => writeContent(c.keyword, c.title)}
+                        <button onClick={() => writeContent(c.keyword, c.title, c.wordCount)}
                           style={{ background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: ".25rem .5rem", fontSize: ".72rem", color: "var(--text2)", cursor: "pointer", fontFamily: "inherit" }}>
                           {isPro ? "✍ Write" : "🔒 Pro"}
                         </button>
