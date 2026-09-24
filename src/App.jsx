@@ -1228,6 +1228,13 @@ function readStrategyCache(site) {
 
 // Body words only, the same measure validateGeneratedHtml uses, so the
 // expansion decision and the warning the user sees can never disagree.
+// Keywords that ask about money. The model cannot know the client's prices and,
+// for these keywords, invents them anyway — "cost of data protection officer"
+// produced six salary figures on 24 Sep 2026 despite the no-figures rule.
+function isCostKeyword(kw) {
+  return /\b(cost|costs|costing|price|prices|pricing|priced|how much|fee|fees|rate|rates|quote|quotes|charge|charges|salary|salaries|budget|affordable|cheap|cheapest)\b/i.test(String(kw || ""));
+}
+
 function countArticleWords(html) {
   return bodyProseText(html).split(/\s+/).filter(Boolean).length;
 }
@@ -2268,7 +2275,7 @@ export default function RankActions() {
         m1:`Position: #${opp.position}`, m2:opp.potential,
         suggestion:opp.fix,
         field:"Page Content & Title",
-        current:`Not fully optimised for "${opp.keyword}"`,
+        current:`Ranks #${opp.position} for "${opp.keyword}"`,
         recommended:opp.fix,
         metaDesc:null,
       };
@@ -2596,7 +2603,7 @@ Your suggestions MUST be genuine improvements on the CURRENT title and descripti
       const topKwsShort = siteData?.keywords?.slice(0,5).map(k=>k.keyword).join(", ") || "not connected";
       const topKwsFull  = siteData?.keywords?.slice(0,8).map(k=>`"${k.keyword}" (pos #${k.position}, ${k.impressions} impressions/mo)`).join(", ") || "unknown";
       const allKws      = siteData?.keywords?.map(k=>k.keyword).join(", ") || "";
-      const keyword     = fix.title.match(/"([^"]+)"/)?.[1] || fix.current?.replace(/Not fully optimised for |"/g,"") || "";
+      const keyword     = fix.title.match(/"([^"]+)"/)?.[1] || fix.current?.replace(/Not fully optimised for |Ranks #\d+ for |"/g,"") || "";
       const siteContext = siteData
         ? `Site: ${selectedSite}. All ranking keywords: ${allKws}. Top keywords: ${topKwsFull}. Avg position: ${siteData.totals?.avgPosition}, CTR: ${siteData.totals?.avgCtr}.`
         : `Site: ${selectedSite}.`;
@@ -3995,7 +4002,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
                               desc:`Currently at position #${row.pos} with ${row.vol} impressions. ${row.gap}.`,
                               m1:`Position: #${row.pos}`, m2:row.vol,
                               field:"Title Tag & Page Content",
-                              current:`Not fully optimised for "${row.kw}"`,
+                              current:`Ranks #${row.pos} for "${row.kw}"`,
                               recommended:row.gap, metaDesc:null,
                             })}>
                               {btnLabel}
@@ -4325,7 +4332,18 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           <div className="modal-section-label">Issue</div>
           <div className="current-box">
             <div className="current-label">{modalPageMeta?.title ? "Current title tag (live from your page)" : modal.field}</div>
-            <div className="current-val">{modalPageMeta?.title || modal.current}</div>
+            {/* Struck through only when it IS the live copy being replaced. A
+                ranking fact ("Ranks #14 for ...") is a measurement, not old text. */}
+            <div className="current-val" style={modalPageMeta?.title ? undefined : { textDecoration: "none" }}>
+              {modalPageMeta?.title || modal.current}
+            </div>
+            {!modalPageMeta && !modalLoading && !modal.demo && (
+              <div style={{ marginTop: ".5rem", fontSize: ".75rem", color: "var(--text3)", lineHeight: 1.5 }}>
+                {modal.page || modal.pageUrl
+                  ? "Couldn't read this page live, so these suggestions aren't based on its current wording. Check them against the page before using them."
+                  : "Search Console didn't say which page ranks for this, so no page was read. Check the suggestions against the page you want to rank."}
+              </div>
+            )}
             {modalPageMeta?.metaDesc && (
               <div style={{marginTop:".55rem",paddingTop:".55rem",borderTop:"1px solid var(--border)"}}>
                 <div className="current-label">Current meta description</div>
@@ -5539,6 +5557,15 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       // rather than asking for "4-6 H2 sections" whatever the length.
       const targetWords  = parseTargetWords(wordCount, 1000);
 
+      // Cost keywords: the reader wants numbers the model cannot know. With the
+      // user's own figures in Notes, use only those. Without them, explain what
+      // drives the cost and invite a quote — usually the better article for a
+      // service business anyway.
+      const costRule = !isCostKeyword(kw) ? ""
+        : /\d/.test(notes || "")
+          ? `\nCOST QUESTION: this keyword asks about cost. Use ONLY the prices or ranges given in the notes above. State no other figures.`
+          : `\nCOST QUESTION: this keyword asks about cost, and you have NOT been given the client's prices. Do not state any price, fee, salary or range, not even as an estimate. Explain what drives the cost (scope, size, experience, contract length, urgency) and invite the reader to ask for a quote.`;
+
       // Remember the business name for this site the first time it is used or
       // whenever it changes. Fire-and-forget: a failed save never blocks writing.
       const bizNameClean = (bizName || "").trim();
@@ -5642,7 +5669,7 @@ is as much a failure as writing fewer than ${Math.round(targetWords * 0.9)} — 
 That is ${sectionCount} sections of about ${perSection} words each. Use the words for depth, not padding:
 worked examples, common mistakes, what to do first, how long it takes.
 Do NOT state specific prices, fees, statistics or percentages unless they appear in the details above —
-you cannot verify them, and an invented figure in a published article damages the reader's credibility.
+you cannot verify them, and an invented figure in a published article damages the reader's credibility.${costRule}
 
 IMPORTANT — The keyword "${kw.trim()}" MUST appear verbatim in the title, meta description, H1, first sentence, and at least 2 H2s. This is the single most important rule. Label internal links clearly so non-technical users know what they are. Every internal link MUST resolve to a real page (use only URLs from the ALLOWED INTERNAL LINKS list). The page must look professional and on-brand for RankActions while still being a usable blog post the client can publish.`;
 
@@ -5894,6 +5921,12 @@ ${clean}`,
                 <label>Additional notes (optional)</label>
                 <textarea placeholder="Any specific points to cover, products to mention, things to avoid..."
                   value={notes} onChange={e=>setNotes(e.target.value)} rows={3}/>
+                {isCostKeyword(kw) && !/\d/.test(notes) && (
+                  <div style={{ marginTop: ".4rem", fontSize: ".75rem", color: "var(--amber)", lineHeight: 1.5 }}>
+                    Writing about costs? Add your real prices or ranges here and the article will use them.
+                    Otherwise it won't know your figures, so it will explain what affects the cost instead.
+                  </div>
+                )}
               </div>
               <button className="cg-gen-btn" disabled={!kw.trim()||loading} onClick={generate}>
                 {loading ? <><span className="spinner-sm"/>{" Generating…"}</> : "✨ Generate article"}
