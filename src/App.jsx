@@ -1309,7 +1309,47 @@ function kwNear(kw, text, maxGap = 2) {
 
 function escapeRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
-function validateGeneratedHtml(html, { keyword, targetWords } = {}) {
+// Figures the model cannot have verified: money, percentages, "1 in 4" style
+// ratios and statistical phrasing. The prompt tells the model not to state
+// these unless supplied, but prompt rules leak — the pillar published on 22 Sep
+// 2026 invented both a statistic and a set of price bands. This is the net.
+//
+// Anything whose digits appear in what the user typed (keyword, business,
+// CTA, notes) is treated as supplied and skipped. Plain numbers, years and
+// word counts are never matched: the patterns need a currency sign, a percent,
+// a ratio or claim wording.
+function findUnverifiedFigures(html, suppliedText = "") {
+  const text = bodyProseText(html).replace(/\s+/g, " ");
+  const supplied = String(suppliedText || "");
+  const suppliedNums = new Set((supplied.match(/\d[\d,.]*/g) || []).map(n => n.replace(/[,.]$/, "").replace(/,/g, "")));
+  const patterns = [
+    /[£$€]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:k|m|bn|million|billion|thousand)\b)?/gi,
+    /\b\d[\d,]*(?:\.\d+)?\s?(?:pounds|GBP|dollars|USD|euros|EUR)\b/gi,
+    /\b\d+(?:\.\d+)?\s?(?:%|per\s?cent\b)/gi,
+    /\b\d{1,3}\s+(?:out\s+of|in)\s+\d{1,4}\b(?!\s*(?:words|minutes|seconds|days|weeks|months|years))/gi,
+    /\b(?:studies|research|surveys?|statistics|data)\s+(?:show|shows|suggest|suggests|found|finds|reveal|reveals|indicate|indicates)\b/gi,
+    /\baccording\s+to\s+(?:a\s+|the\s+)?(?:recent\s+|new\s+|one\s+|industry\s+)?(?:study|survey|report|research|statistics|figures)\b/gi,
+    /\bon\s+average\b/gi,
+  ];
+  const found = [];
+  const seen = new Set();
+  for (const re of patterns) {
+    for (const m of text.match(re) || []) {
+      const hit = m.trim();
+      // "5 in 2026" is a year, not a ratio.
+      if (/\bin\s+(19|20)\d\d\b/i.test(hit)) continue;
+      const digits = (hit.match(/\d[\d,.]*/g) || []).map(n => n.replace(/[,.]$/, "").replace(/,/g, ""));
+      if (digits.length && digits.every(d => suppliedNums.has(d))) continue;
+      const key = hit.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push(hit);
+    }
+  }
+  return found;
+}
+
+function validateGeneratedHtml(html, { keyword, targetWords, suppliedText } = {}) {
   const warnings = [];
   if (!html || typeof html !== "string") return warnings;
   const kw = String(keyword || "").trim();
@@ -1343,6 +1383,15 @@ function validateGeneratedHtml(html, { keyword, targetWords } = {}) {
   const domainish = names.filter(n => /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(n.trim()) && !/\s/.test(n.trim()));
   if (domainish.length > 0) {
     warnings.push(`Schema author/publisher is set to "${domainish[0]}" rather than your business name.`);
+  }
+
+  // Figures to verify. First in importance but listed here so the length check
+  // below stays last, where people expect it.
+  const figures = findUnverifiedFigures(html, suppliedText);
+  if (figures.length > 0) {
+    const shown = figures.slice(0, 5).map(f => `"${f}"`).join(", ");
+    const more = figures.length > 5 ? ` and ${figures.length - 5} more` : "";
+    warnings.push(`${figures.length} ${figures.length === 1 ? "figure" : "figures"} to verify before publishing: ${shown}${more}. The AI cannot check prices, statistics or percentages — confirm each one or remove it.`);
   }
 
   // Word count band, deliberately asymmetric. A warning should flag something
@@ -5568,7 +5617,13 @@ ${clean}`,
 
         // Report what the guards can't fix. Runs before the completeness check
         // so a truncated article still reports its other problems.
-        setWarnings(validateGeneratedHtml(clean, { keyword: kw.trim(), targetWords }));
+        setWarnings(validateGeneratedHtml(clean, {
+          keyword: kw.trim(),
+          targetWords,
+          // Anything the user typed counts as supplied, so their own prices
+          // and figures are never flagged back at them.
+          suppliedText: [kw, biz, cta, notes].join(" "),
+        }));
 
         // Completeness check. Longform generations can hit the token ceiling and
         // stop mid-sentence; the HTML still previews fine until you reach the end.
@@ -7625,7 +7680,7 @@ ${dateRule}${wordCountRule}`;
                     <div style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text)" }}>{s.topic}</div>
                     <div style={{ display: "flex", gap: ".5rem", marginTop: ".35rem", flexWrap: "wrap" }}>
                       {s.difficulty && <span style={{ fontSize: ".68rem", fontWeight: 700, padding: ".15rem .5rem", borderRadius: 5, background: `${diffColors[s.difficulty]}22`, color: diffColors[s.difficulty] }}>{s.difficulty.toUpperCase()}</span>}
-                      {s.trafficPotential && <span style={{ fontSize: ".68rem", fontWeight: 600, padding: ".15rem .5rem", borderRadius: 5, background: "var(--bdim)", color: "var(--blue)" }}>{s.trafficPotential} est. traffic</span>}
+                      {s.trafficPotential && <span title="Estimated by the AI from your keyword data, not measured. Treat it as a rough guide only." style={{ fontSize: ".68rem", fontWeight: 600, padding: ".15rem .5rem", borderRadius: 5, background: "var(--bdim)", color: "var(--blue)" }}>≈ {s.trafficPotential} · AI estimate</span>}
                       <span style={{ fontSize: ".68rem", padding: ".15rem .5rem", borderRadius: 5, background: "var(--s2)", color: "var(--text3)" }}>1 pillar + {s.clusters?.length || 0} posts</span>
                     </div>
                   </div>
