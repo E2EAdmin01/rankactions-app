@@ -1493,6 +1493,7 @@ function validateGeneratedHtml(html, { keyword, targetWords, suppliedText, loose
 
 
 
+
 // ── Location & sector pages ────────────────────────────────────────────────
 // Everything below is deterministic and runs in the browser. The AI never
 // decides which towns are near the customer, how far away they are, or whether
@@ -2053,7 +2054,10 @@ const COMMITMENT_PATTERNS = [
   /\bin (?:hours|minutes) rather than (?:days|hours|weeks)\b|\bwithin (?:the hour|minutes|an hour)\b/i,
   // Words may sit between "respond" and "within": "we typically respond to
   // urgent enquiries within a few hours" (Manchester page).
-  /\bwe(?:'ll| will| can| aim to| always| typically| usually| normally| generally)?\s+(?:\w+\s+){0,3}(?:respond|reply|call (?:you )?back|get back to you)\b(?:\s+\S+){0,5}?\s+within\b/i,
+  // "arrange an initial discussion within a few days" is a promise too. The
+  // "within" must be followed by a time, so "we start by mapping data within
+  // your systems" is not caught.
+  /\bwe(?:'ll| will| can| aim to| always| typically| usually| normally| generally)?\s+(?:\w+\s+){0,3}(?:respond|reply|call (?:you )?back|get back to you|arrange|start|begin|book|schedule|set up)\b(?:\s+\S+){0,5}?\s+within\s+(?:the same\s+|a few\s+|an?\s+|one\s+|two\s+|three\s+|\d+\s*)?(?:working\s+|business\s+)?(?:hours?|days?|minutes?|weeks?)\b/i,
   /\b(?:clients|customers) (?:tell|told|say|said|often tell|regularly tell|report|find) (?:us|that)\b/i,
   /\b(?:many|most|all|several|some) of our (?:\w+\s+){0,2}(?:clients|customers)\b/i,
   /\bour (?:\w+\s+){0,2}(?:clients|customers) (?:include|range from|tell|say|find|value|rely)\b/i,
@@ -2117,6 +2121,15 @@ function findAnswerContradictions(html, { town, answers = {} } = {}) {
     rules.push({ re: /\bon[\s-]site\b|\bin person\b|\bvisit(?:s|ing)? (?:you|your)\b|\bbe with you\b/i, why: "you chose remote only" });
   if (answers.office === "no" && tRe)
     rules.push({ re: new RegExp(`\\b(?:our|an?) (?:office|base|branch|team|staff|engineers?)(?: \\w+)? (?:in|at) ${tRe}\\b|\\b(?:we're|we are|we’re) based in ${tRe}\\b`, "i"), why: `you said you have no office or staff in ${t}` });
+  // Overstating how often they work there: "a Chester-based team that serves
+  // Manchester daily" when the answer was a few jobs. Only sentences about the
+  // business's work or the town, so "staff who handle data daily" is fine.
+  const often = answers.worked === "few" ? /\b(?:daily|every day|every week|weekly|regularly|routinely|frequently|constantly)\b/i
+              : answers.worked === "regular" ? /\b(?:daily|every day)\b/i : null;
+  if (often) {
+    const about = new RegExp(`${tRe ? tRe + "|" : ""}\\bserv\\w*|\\bwork(?:s|ing)? (?:with|in|across)\\b|\\bclients?\\b|\\bvisit\\w*`, "i");
+    rules.push({ re: { test: (s) => often.test(s) && about.test(s) }, why: answers.worked === "few" ? `you said a few jobs in ${t || "the area"}` : `you said regularly, not daily` });
+  }
   if (answers.worked === "none" && tRe)
     rules.push({ re: new RegExp(`\\b(?:worked|work|working) with (?:\\w+ ){0,4}(?:in|across|around) ${tRe}\\b|\\bclients in ${tRe}\\b`, "i"), why: `you said you haven't worked in ${t} yet` });
   const out = [];
@@ -2125,6 +2138,54 @@ function findAnswerContradictions(html, { town, answers = {} } = {}) {
     if (!r) continue;
     const short = s.length > 100 ? s.slice(0, 97).replace(/\s+\S*$/, "") + "…" : s;
     out.push(`"${short}" (${r.why})`);
+  }
+  return out;
+}
+
+// UK counties and regions. The town list has none, so "organisations across
+// Flintshire" (Mold) and "education providers across the North West"
+// (Manchester, live 25 Sep 2026) passed unchecked while implying coverage the
+// customer never gave. England: ceremonial counties plus common names;
+// Wales, Scotland, Northern Ireland: principal areas and traditional counties
+// that are not already towns. Nations are left out ("UK GDPR", "Wales").
+const UK_AREAS = ["Bedfordshire","Berkshire","Buckinghamshire","Cambridgeshire","Cheshire","Cornwall","Cumbria","Cumberland","Westmorland","Derbyshire","Devon","Dorset","County Durham","Durham","East Riding of Yorkshire","East Sussex","West Sussex","Sussex","Essex","Gloucestershire","Greater London","Greater Manchester","Hampshire","Herefordshire","Hertfordshire","Isle of Wight","Kent","Lancashire","Leicestershire","Lincolnshire","Merseyside","Norfolk","North Yorkshire","South Yorkshire","West Yorkshire","Yorkshire","Northamptonshire","Northumberland","Nottinghamshire","Oxfordshire","Rutland","Shropshire","Somerset","Staffordshire","Suffolk","Surrey","Tyne and Wear","Warwickshire","West Midlands","East Midlands","Midlands","Wiltshire","Worcestershire","Wirral","the Wirral","Teesside","Humberside","Deeside","North West","North East","South East","South West","East of England","East Anglia","Home Counties","Cotswolds","Lake District","Peak District","Flintshire","Denbighshire","Gwynedd","Anglesey","Isle of Anglesey","Powys","Ceredigion","Pembrokeshire","Carmarthenshire","Monmouthshire","Glamorgan","Vale of Glamorgan","Rhondda Cynon Taf","Neath Port Talbot","Blaenau Gwent","Torfaen","Snowdonia","North Wales","South Wales","Mid Wales","West Wales","Aberdeenshire","Moray","Fife","Lothian","East Lothian","West Lothian","Midlothian","Lanarkshire","North Lanarkshire","South Lanarkshire","Ayrshire","Renfrewshire","Dunbartonshire","Scottish Borders","Dumfries and Galloway","Argyll and Bute","Perth and Kinross","Clackmannanshire","Inverclyde","Scottish Highlands","Highlands","Western Isles","Orkney","Shetland","County Antrim","County Down","County Armagh","County Fermanagh","County Tyrone","County Londonderry"];
+// Areas that are also everyday words or names: a place only after a location word.
+const AREA_NAMES_AS_WORDS = new Set(["Kent","Devon","Durham","Cornwall","Essex","Norfolk","Suffolk","Surrey","Dorset","Somerset","Rutland","Fife","Moray","Midlands","Highlands"]);
+let _areaRe = null;
+function areaRegex() {
+  if (_areaRe) return _areaRe;
+  const alt = UK_AREAS.slice().sort((a, b) => b.length - a.length).map(escapeRe).join("|");
+  _areaRe = new RegExp(`(^|[^A-Za-z'’-])(${alt})(?![A-Za-z'’-])`, "g");
+  return _areaRe;
+}
+function findUnsuppliedAreas(html, suppliedText = "") {
+  const text = pageBodyText(html);
+  const supplied = " " + normPlace(suppliedText) + " ";
+  const out = [], seen = new Set();
+  const re = areaRegex(); re.lastIndex = 0;
+  let m;
+  while ((m = re.exec(text))) {
+    const name = m[2], key = normPlace(name).replace(/^the /, "");
+    if (seen.has(key) || supplied.includes(` ${key} `)) continue;
+    const at = m.index + m[1].length;
+    if (AREA_NAMES_AS_WORDS.has(name) && !PLACE_LEAD_RE.test(text.slice(Math.max(0, at - 80), at).replace(/\bthe\s+$/i, ""))) continue;
+    seen.add(key); out.push(name.replace(/^the /, ""));
+  }
+  return out;
+}
+
+// Specific histories of past work: "We've worked with clients in Manchester
+// who needed immediate support during a data breach…" (live Manchester page).
+// The customer said they had worked there, not with whom or on what.
+const CLIENT_HISTORY_RE = /\bwe(?:'ve|’ve| have)(?: already)? (?:worked with|helped|supported|advised) (?:[\w-]+ ){0,6}?(?:who|that|through|during|to (?:prepare|standardise|respond|recover|resolve))\b/i;
+function findClientHistoryClaims(html, suppliedText = "") {
+  const supplied = String(suppliedText || "").toLowerCase();
+  const out = [];
+  for (const s of pageBodyText(html).replace(/([.!?])\s+/g, "$1\u0000").split("\u0000")) {
+    const m = s.match(CLIENT_HISTORY_RE);
+    if (!m || supplied.includes(m[0].toLowerCase())) continue;
+    const short = s.length > 110 ? s.slice(0, 107).replace(/\s+\S*$/, "") + "…" : s;
+    if (!out.includes(short)) out.push(short);
   }
   return out;
 }
@@ -2143,6 +2204,9 @@ function validateLocalPage(html, ctx = {}) {
     if (guide.length) w.push(`Parts of the page read as a buyer's guide to choosing a provider rather than as your service: ${listOf(guide, 2)}. Rewrite them about what you do.`);
     const denials = findNegativeOfferStatements(html, ctx.suppliedText);
     if (denials.length) w.push(`The page says what you don't offer, which you never told us. Check it's true, or remove it: ${listOf(denials, 2)}`);
+    const history = findClientHistoryClaims(html, ctx.suppliedText);
+    if (history.length) w.push(`The page describes past work you didn't tell us about. Check it's true, or remove it: ${listOf(history, 2)}`);
+    if (ctx.scopeGiven === false) w.push(`You didn't list what's included in this service, so the service description is written from general knowledge. Check it only describes what you actually offer.`);
     const promises = findUnsuppliedCommitments(html, ctx.suppliedText);
     if (promises.length) w.push(`The page promises things or quotes clients in ways you didn't tell us about. Check each is true, or remove it: ${listOf(promises, 3)}`);
   }
@@ -2152,7 +2216,7 @@ function validateLocalPage(html, ctx = {}) {
     w.push(...findMissingLocationAnswers(html, ctx));
     const miss = findMissingDetails(html, ctx.extra, { ignore: [ctx.town, ctx.base] });
     if (miss.length) w.push(`Details from your own words aren't in the page: ${listOf(miss)}.`);
-    const places = findUnsuppliedPlaces(html, { allowed: [ctx.town, ctx.base], suppliedText: ctx.suppliedText });
+    const places = findUnsuppliedPlaces(html, { allowed: [ctx.town, ctx.base], suppliedText: ctx.suppliedText }).concat(findUnsuppliedAreas(html, ctx.suppliedText));
     if (places.length) w.push(`The page names places you didn't give us: ${listOf(places)}. Check it doesn't claim you work there, or remove them.`);
   } else if (ctx.type === "sector") {
     if (ctx.mode === "general") {
@@ -2164,7 +2228,7 @@ function validateLocalPage(html, ctx = {}) {
       const miss = findMissingDetails(html, ctx.extra, { ignore: [ctx.sector] });
       if (miss.length) w.push(`Details from your own words aren't in the page: ${listOf(miss)}.`);
     }
-    const places = findUnsuppliedPlaces(html, { allowed: [ctx.base], suppliedText: ctx.suppliedText });
+    const places = findUnsuppliedPlaces(html, { allowed: [ctx.base], suppliedText: ctx.suppliedText }).concat(findUnsuppliedAreas(html, ctx.suppliedText));
     if (places.length) w.push(`The page names places you didn't give us: ${listOf(places)}. Check it doesn't claim you work there, or remove them.`);
   }
   if (Array.isArray(ctx.fingerprint) && Array.isArray(ctx.others)) {
@@ -6931,6 +6995,7 @@ ${clean}`,
             extra: pageType === "location" ? locExtra : secExtra,
             mode: secMode, sector: lpSectorName, suppliedText,
             businessName: bizNameClean,
+            scopeGiven: !!scopeText.trim(),
             fingerprint: pageFp,
             // Earlier pages of the same type, except earlier versions of this one.
             others: lpHistory.filter(h => h && h.type === pageType && Array.isArray(h.fp) && normPlace(h.place) !== normPlace(lpPlace)),
@@ -7142,11 +7207,9 @@ ${clean}`,
                   <textarea id="cg-scope" rows={2} value={scopeText}
                     onChange={e => { scopeAutoRef.current = false; setScopeText(e.target.value); }}
                     placeholder="e.g. Acting as your DPO, subject access requests, breach response, staff training"/>
-                  <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
-                    {scopeText.trim()
-                      ? "The page will describe only these as what you offer. Remembered for this service."
-                      : "Without a list, the page won't say what's included or excluded, and invites readers to ask you instead."}
-                  </div>
+                  {scopeText.trim()
+                    ? <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>The page will describe only these as what you offer. Remembered for this service.</div>
+                    : <div className="cg-note warn" style={{marginTop:".3rem"}}>Recommended. Without a list, the page describes this service from general knowledge and may include things you don't offer.</div>}
                 </div>
 
                 <div className="cg-field">
@@ -7291,11 +7354,9 @@ ${clean}`,
                   <textarea id="cg-scope" rows={2} value={scopeText}
                     onChange={e => { scopeAutoRef.current = false; setScopeText(e.target.value); }}
                     placeholder="e.g. Acting as your DPO, subject access requests, breach response, staff training"/>
-                  <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
-                    {scopeText.trim()
-                      ? "The page will describe only these as what you offer. Remembered for this service."
-                      : "Without a list, the page won't say what's included or excluded, and invites readers to ask you instead."}
-                  </div>
+                  {scopeText.trim()
+                    ? <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>The page will describe only these as what you offer. Remembered for this service.</div>
+                    : <div className="cg-note warn" style={{marginTop:".3rem"}}>Recommended. Without a list, the page describes this service from general knowledge and may include things you don't offer.</div>}
                 </div>
                 <div className="cg-field">
                   <label htmlFor="cg-sector">Which sector?</label>
