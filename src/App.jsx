@@ -1494,6 +1494,9 @@ function validateGeneratedHtml(html, { keyword, targetWords, suppliedText, loose
 
 
 
+
+
+
 // ── Location & sector pages ────────────────────────────────────────────────
 // Everything below is deterministic and runs in the browser. The AI never
 // decides which towns are near the customer, how far away they are, or whether
@@ -1709,6 +1712,21 @@ const PLACE_LEAD_RE = new RegExp(
   `\\b(?:${PLACE_LEAD_WORDS.map(w => `[${w[0]}${w[0].toUpperCase()}]${w.slice(1)}`).join("|")})\\s+` +
   `(?:[A-Z][\\w'’-]*(?:\\s+[A-Z][\\w'’-]*)*\\s*(?:,|and|or)\\s+)*$`);
 
+// The page body as sentences. Headings, paragraphs and list items end a
+// sentence even without a full stop: a heading used to run into the next
+// sentence, so a check quoted "Why Manchester Businesses Choose… Many
+// organisations in…" as one sentence (25 Sep 2026).
+function pageSentences(html) {
+  const src = String(html || "");
+  const body = src.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  const marked = (body ? body[1] : src)
+    .replace(/<header[\s\S]*?<\/header>/gi, " ")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<\/(?:h[1-6]|p|li|div|td|th|blockquote|section)>|<br\s*\/?>/gi, " \u0000 ");
+  return articleText(marked).replace(/([.!?])\s+/g, "$1\u0000")
+    .split("\u0000").map(s => s.replace(/\s+/g, " ").trim()).filter(Boolean);
+}
+
 // Towns named in the page that the customer never gave us. On a location page
 // these are almost always invented claims ("we also cover Chester, Mold and
 // Flint"). Allowed: the target town, their base, and anything they typed.
@@ -1846,8 +1864,7 @@ function findRegulationMentions(html, suppliedText = "") {
 // has told us nothing about their work in the sector, so any such claim is
 // invented, however plausible it reads.
 function findExperienceClaims(html) {
-  const text = pageBodyText(html);
-  const sentences = text.replace(/([.!?])\s+/g, "$1\u0000").split("\u0000");
+  const sentences = pageSentences(html);
   const pats = [
     /\b(?:we|our team)\s*(?:have|'ve|’ve)\s+(?:worked|supported|helped|partnered|served|delivered|advised|been (?:working|supporting|helping))\b/i,
     /\bwe(?:'ve|’ve| have)\s+(?:over|more than|\d+|many|years|decades)\b/i,
@@ -2019,8 +2036,7 @@ function findBuyersGuideSentences(html) {
     const h = m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
     if (/^(?:choosing|how to choose|selecting|finding the right|what to look for)\b/i.test(h) && !out.includes(h)) out.push(h);
   }
-  const text = pageBodyText(src);
-  for (const s of text.replace(/([.!?])\s+/g, "$1\u0000").split("\u0000")) {
+  for (const s of pageSentences(src)) {
     if (GUIDE_PATTERNS.some(p => p.test(s))) {
       const short = s.length > 110 ? s.slice(0, 107).replace(/\s+\S*$/, "") + "…" : s;
       if (!out.includes(short)) out.push(short);
@@ -2052,6 +2068,8 @@ const COMMITMENT_PATTERNS = [
   /\bfree (?:initial |no[- ]obligation )?(?:consultation|audit|review|assessment|quote|call|health[- ]check)\b|\bno[- ]obligation\b/i,
   /\bfixed[- ](?:fee|price)s?\b|\bno hidden (?:fees|costs|charges)\b/i,
   /\bin (?:hours|minutes) rather than (?:days|hours|weeks)\b|\bwithin (?:the hour|minutes|an hour)\b/i,
+  // "We can begin reviewing a request the same day you contact us."
+  /\b(?:begin|start|respond|reply|review\w*|get back to you|call (?:you )?back|turn\w* (?:it )?around|pick\w* (?:it )?up)\b[^.]{0,40}?\bsame[\s-]day\b/i,
   // Words may sit between "respond" and "within": "we typically respond to
   // urgent enquiries within a few hours" (Manchester page).
   // "arrange an initial discussion within a few days" is a promise too. The
@@ -2068,11 +2086,13 @@ const COMMITMENT_PATTERNS = [
 function findUnsuppliedCommitments(html, suppliedText = "") {
   const supplied = String(suppliedText || "").toLowerCase();
   const out = [];
-  for (const s of pageBodyText(html).replace(/([.!?])\s+/g, "$1\u0000").split("\u0000")) {
+  for (const s of pageSentences(html)) {
     const hit = COMMITMENT_PATTERNS.map(p => s.match(p)).find(Boolean);
     if (!hit) continue;
-    // The customer said it themselves ("we offer a free consultation").
+    // The customer said it themselves ("we offer a free consultation"), or it
+    // is a same-day promise and they chose "same day" as their answer.
     if (supplied.includes(hit[0].toLowerCase())) continue;
+    if (/same[\s-]day/i.test(hit[0]) && /\bsame[\s-]day\b/.test(supplied)) continue;
     const short = s.length > 110 ? s.slice(0, 107).replace(/\s+\S*$/, "") + "…" : s;
     if (!out.includes(short)) out.push(short);
   }
@@ -2098,7 +2118,7 @@ const NEGATIVE_OFFER_RE = /\bwe (?:don't|don’t|do not|never|cannot|can't|can�
 function findNegativeOfferStatements(html, suppliedText = "") {
   const supplied = String(suppliedText || "").toLowerCase();
   const out = [];
-  for (const s of pageBodyText(html).replace(/([.!?])\s+/g, "$1\u0000").split("\u0000")) {
+  for (const s of pageSentences(html)) {
     const m = s.match(NEGATIVE_OFFER_RE);
     if (!m || supplied.includes(m[0].toLowerCase())) continue;
     const short = s.length > 110 ? s.slice(0, 107).replace(/\s+\S*$/, "") + "…" : s;
@@ -2112,11 +2132,14 @@ function findNegativeOfferStatements(html, suppliedText = "") {
 // only, an office in the town when they said they have none.
 function findAnswerContradictions(html, { town, answers = {} } = {}) {
   const t = townDisplayName(town);
-  const sentences = pageBodyText(html).replace(/([.!?])\s+/g, "$1\u0000").split("\u0000");
+  const sentences = pageSentences(html);
   const tRe = t ? escapeRe(t) : null;
   const rules = [];
+  // "Same day" contradicts the answer only when it is about getting there:
+  // "be on site in Manchester the same day". "We can begin reviewing a
+  // request the same day" is a timing promise, handled by the promises check.
   if (answers.speed === "next" || answers.speed === "remote")
-    rules.push({ re: /\bsame[\s-]day\b/i, why: answers.speed === "next" ? "you chose next working day" : "you chose remote only" });
+    rules.push({ re: /\b(?:on[\s-]site|be with you|visit\w*|attend\w*|in person|arriv\w*|travel\w*|(?:be|get) there)\b[^.]{0,40}?\bsame[\s-]day\b/i, why: answers.speed === "next" ? "you chose next working day" : "you chose remote only" });
   if (answers.speed === "remote")
     rules.push({ re: /\bon[\s-]site\b|\bin person\b|\bvisit(?:s|ing)? (?:you|your)\b|\bbe with you\b/i, why: "you chose remote only" });
   if (answers.office === "no" && tRe)
@@ -2126,9 +2149,18 @@ function findAnswerContradictions(html, { town, answers = {} } = {}) {
   // business's work or the town, so "staff who handle data daily" is fine.
   const often = answers.worked === "few" ? /\b(?:daily|every day|every week|weekly|regularly|routinely|frequently|constantly)\b/i
               : answers.worked === "regular" ? /\b(?:daily|every day)\b/i : null;
-  if (often) {
-    const about = new RegExp(`${tRe ? tRe + "|" : ""}\\bserv\\w*|\\bwork(?:s|ing)? (?:with|in|across)\\b|\\bclients?\\b|\\bvisit\\w*`, "i");
-    rules.push({ re: { test: (s) => often.test(s) && about.test(s) }, why: answers.worked === "few" ? `you said a few jobs in ${t || "the area"}` : `you said regularly, not daily` });
+  // Within 50 characters of the town name, and not negated: "serves
+  // Manchester daily" is caught; "organisations in Manchester… don't require
+  // someone dedicated to the role every day" is about the reader, not them.
+  if (often && tRe) {
+    const near = new RegExp(`${tRe}[^.]{0,50}?${often.source}|${often.source}[^.]{0,50}?${tRe}`, "i");
+    const test = (s) => {
+      const m = s.match(near);
+      if (!m) return false;
+      const f = m[0].match(often), at = m.index + m[0].indexOf(f[0]);
+      return !/\b(?:not|don't|don’t|doesn't|doesn’t|do not|does not|never|without)\b[^.]{0,40}$/i.test(s.slice(0, at));
+    };
+    rules.push({ re: { test }, why: answers.worked === "few" ? `you said a few jobs in ${t}` : `you said regularly, not daily` });
   }
   if (answers.worked === "none" && tRe)
     rules.push({ re: new RegExp(`\\b(?:worked|work|working) with (?:\\w+ ){0,4}(?:in|across|around) ${tRe}\\b|\\bclients in ${tRe}\\b`, "i"), why: `you said you haven't worked in ${t} yet` });
@@ -2181,7 +2213,7 @@ const CLIENT_HISTORY_RE = /\bwe(?:'ve|’ve| have)(?: already)? (?:worked with|h
 function findClientHistoryClaims(html, suppliedText = "") {
   const supplied = String(suppliedText || "").toLowerCase();
   const out = [];
-  for (const s of pageBodyText(html).replace(/([.!?])\s+/g, "$1\u0000").split("\u0000")) {
+  for (const s of pageSentences(html)) {
     const m = s.match(CLIENT_HISTORY_RE);
     if (!m || supplied.includes(m[0].toLowerCase())) continue;
     const short = s.length > 110 ? s.slice(0, 107).replace(/\s+\S*$/, "") + "…" : s;
@@ -2207,7 +2239,7 @@ function validateLocalPage(html, ctx = {}) {
     const history = findClientHistoryClaims(html, ctx.suppliedText);
     if (history.length) w.push(`The page describes past work you didn't tell us about. Check it's true, or remove it: ${listOf(history, 2)}`);
     if (ctx.scopeGiven === false) w.push(`You didn't list what's included in this service, so the service description is written from general knowledge. Check it only describes what you actually offer.`);
-    const promises = findUnsuppliedCommitments(html, ctx.suppliedText);
+    const promises = findUnsuppliedCommitments(html, (ctx.suppliedText || "") + ((ctx.answers || {}).speed === "same" ? " same day same-day" : ""));
     if (promises.length) w.push(`The page promises things or quotes clients in ways you didn't tell us about. Check each is true, or remove it: ${listOf(promises, 3)}`);
   }
   if (ctx.type === "location") {
