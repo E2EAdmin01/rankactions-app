@@ -1489,6 +1489,7 @@ function validateGeneratedHtml(html, { keyword, targetWords, suppliedText, loose
   return warnings;
 }
 
+
 // ── Location & sector pages ────────────────────────────────────────────────
 // Everything below is deterministic and runs in the browser. The AI never
 // decides which towns are near the customer, how far away they are, or whether
@@ -1983,12 +1984,60 @@ function sectorPhrase(service, sector) {
   return s && x ? `${x} ${s}`.toLowerCase() : "";
 }
 
+// Pages written as neutral advice about "a provider" instead of as the
+// business. The Hawarden test page (25 Sep 2026) obeyed every "never invent"
+// rule by becoming a buyer's guide: the business was named only in the title
+// and schema, and its answers were framed as tips about providers in general.
+// Swap the town name and it is the same page, so it gets its own check.
+const GUIDE_PATTERNS = [
+  /\b(?:when|before)\s+(?:choosing|evaluating|selecting|comparing|hiring|appointing|looking for)\b/i,
+  /\b(?:choosing|selecting|finding|picking|appointing|evaluating)\s+(?:the right|a good|a reliable|a reputable|a trusted|the best|a|an)\b[^.]{0,40}?\b(?:provider|supplier|consultant|consultancy|firm|partner)s?\b/i,
+  /\b(?:a|the right|a good|a reliable|a reputable|the best)\s+(?:[\w-]+\s+){0,3}(?:provider|supplier|consultant|consultancy)s?\s+(?:who|that|will|should|can|combines|offers|listens)\b/i,
+  /\bask\s+(?:your|any|potential|prospective|the)\s+(?:[\w-]+\s+){0,3}(?:provider|supplier|consultant)s?\b/i,
+  /\b(?:many|most|some|good|reputable)\s+(?:[\w-]+\s+){0,3}providers\b/i,
+  /\bwith\s+providers\s+(?:who|that)\b/i,
+];
+function findBuyersGuideSentences(html) {
+  const src = String(html || "");
+  const out = [];
+  // Headings like "Choosing GDPR support for your Hawarden organisation".
+  for (const m of src.matchAll(/<h[23][^>]*>([\s\S]*?)<\/h[23]>/gi)) {
+    const h = m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    if (/^(?:choosing|how to choose|selecting|finding the right|what to look for)\b/i.test(h) && !out.includes(h)) out.push(h);
+  }
+  const text = pageBodyText(src);
+  for (const s of text.replace(/([.!?])\s+/g, "$1\u0000").split("\u0000")) {
+    if (GUIDE_PATTERNS.some(p => p.test(s))) {
+      const short = s.length > 110 ? s.slice(0, 107).replace(/\s+\S*$/, "") + "…" : s;
+      if (!out.includes(short)) out.push(short);
+    }
+  }
+  return out;
+}
+// Does the page speak as the business? Its name in the article body (not just
+// the title and schema) and first-person wording.
+function pageVoiceIssues(html, businessName) {
+  const body = bodyProseText(html).replace(/\s+/g, " ");
+  const issues = [];
+  const name = String(businessName || "").trim();
+  if (name && !body.toLowerCase().includes(name.toLowerCase())) issues.push("name");
+  if (!/\b(?:we|we're|we've|our|us)\b/i.test(body)) issues.push("we");
+  return issues;
+}
+
 // Everything to check on a finished location or sector page, as warnings for
 // the existing "things to check before publishing" panel.
 function validateLocalPage(html, ctx = {}) {
   const w = [];
   if (!html) return w;
   const listOf = (a, n = 4) => a.slice(0, n).map(x => `"${x}"`).join(", ") + (a.length > n ? ` and ${a.length - n} more` : "");
+  if (ctx.type === "location" || ctx.type === "sector") {
+    const voice = pageVoiceIssues(html, ctx.businessName);
+    if (voice.includes("name")) w.push(`The page never names ${ctx.businessName} in the body, so it reads as general advice rather than your own service page.`);
+    if (voice.includes("we")) w.push(`The page never speaks as your business ("we", "our"). It reads as general advice, and could be any company's page for this ${ctx.type === "sector" ? "sector" : "town"}.`);
+    const guide = findBuyersGuideSentences(html);
+    if (guide.length) w.push(`Parts of the page read as a buyer's guide to choosing a provider rather than as your service: ${listOf(guide, 2)}. Rewrite them about what you do.`);
+  }
   if (ctx.type === "location") {
     w.push(...findMissingLocationAnswers(html, ctx));
     const miss = findMissingDetails(html, ctx.extra, { ignore: [ctx.town, ctx.base] });
@@ -6497,6 +6546,15 @@ CSS to include in <style>:
           ];
           never.push("Prices, fees, statistics or percentages unless they appear in the details above.");
           const exampleH1 = isLoc ? `${cap(lpService)} in ${place}` : `${cap(lpPhrase)}`;
+          // How the facts must be voiced. The Hawarden test page left them out
+          // or turned them into generic tips ("a provider who can be on site
+          // the same day…"), so show the model the sentence we mean.
+          const exampleFact = isLoc ? suggestLocationSentence({ town: locTown, base: baseTown, miles: lpMiles, answers }) : "";
+          const voiceFacts = isLoc
+            ? `State the facts above as ${bizLabel}'s own in the first two paragraphs${exampleFact ? `, for example: "${exampleFact}"` : ""}. Come back to them in the sections where they are relevant.`
+            : secMode === "mine"
+              ? `State the business's own words above as ${bizLabel}'s experience in the first two paragraphs, and come back to them in the sections where they are relevant.`
+              : `Describe what ${bizLabel} does for ${audience} in the present tense ("we help…", "we start by…"). Never claim past clients or experience in the sector.`;
           return `You are an expert SEO copywriter. Generate a complete, production-ready HTML ${isLoc ? "location" : "sector"} service page styled with RankActions branding.
 
 OUTPUT ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no code fences, no explanation.
@@ -6524,7 +6582,13 @@ ${factLines.join("\n")}
 
 NEVER INVENT — these rules are absolute:
 ${never.map(n => `- ${n}`).join("\n")}
-Where the facts run out, write about the service itself: what it involves, how it would work for ${audience}, what to expect first, common mistakes, and what to ask any provider. That is general knowledge of the service, not a claim about ${bizLabel}.
+Where the facts run out, write about the service itself as ${bizLabel} delivers it: what it involves, how ${bizLabel} would handle it for ${audience}, what happens first, and the common mistakes it helps avoid. That is general knowledge of the service, not a claim about ${bizLabel}'s track record.
+
+VOICE — MANDATORY:
+- Write as ${bizLabel}, in the first person plural ("we", "our team"). Name ${bizLabel} in the opening paragraph and at least once more in the body.
+- ${voiceFacts}
+- This is ${bizLabel}'s own service page, NOT a buyer's guide. Never advise the reader how to choose, compare or evaluate providers. Never write "when choosing a provider", "look for a provider who", "a good provider will" or "ask your provider", and never call ${bizLabel} "a provider" or "providers" in the third person.
+- Every section, including the questions, answers as ${bizLabel} ("we").
 
 ${designBlock}
 
@@ -6539,7 +6603,7 @@ BUILD THIS STRUCTURE:
 4. PAGE BODY inside <article class="article-body">:
    - Opening paragraph: the FIRST SENTENCE contains the search phrase within the first 25 words
    - EXACTLY ${sectionCount} H2 sections, each of about ${perSection} words of body prose (no more than ${Math.round(perSection * 1.15)}) — count as you write
-   - The last H2 section answers 3 questions ${audience} commonly ask about ${lpService}, each as an H3 question with a short answer, using only the facts above and general knowledge of the service
+   - The last H2 section answers 3 questions ${audience} commonly ask about ${lpService}, each as an H3 question with a short answer written as ${bizLabel} ("we"), using only the facts above and general knowledge of the service
    - One tip/callout box (green border-left)
    - Internal links: follow the INTERNAL LINK RULES above exactly. Format: <a href="[URL from the allowed list]">[descriptive anchor text]</a>
    - Each internal link should have a comment: <!-- Internal link: link to your [page type] page -->
@@ -6640,7 +6704,8 @@ IMPORTANT — The keyword "${kw.trim()}" MUST appear verbatim in the title, meta
           setLoadMsg(`Expanding to ${targetWords.toLocaleString()} words…`);
           const expansionExtra = pageType === "blog" ? ""
             : `\nDo NOT add anything about ${lpPlace} that is not already in the page, and do NOT name any other town, city or region.`
-              + (pageType === "sector" && secMode === "general" ? " Do NOT add claims of clients or experience, or new regulations or standards." : "");
+              + (pageType === "sector" && secMode === "general" ? " Do NOT add claims of clients or experience, or new regulations or standards." : "")
+              + ` Keep writing as ${bizNameClean || displaySite(selectedSite)} ("we"), and do NOT add advice on how to choose a provider.`;
           try {
             const expanded = await callClaude(
               `The article below is ${words} words of body prose. It must be between ${floor} and ${Math.round(targetWords * 1.1)} words.
@@ -6716,6 +6781,7 @@ ${clean}`,
             type: pageType, town: locTown, base: baseTown, miles: lpMiles, answers,
             extra: pageType === "location" ? locExtra : secExtra,
             mode: secMode, sector: lpSectorName, suppliedText,
+            businessName: bizNameClean,
             fingerprint: pageFp,
             // Earlier pages of the same type, except earlier versions of this one.
             others: lpHistory.filter(h => h && h.type === pageType && Array.isArray(h.fp) && normPlace(h.place) !== normPlace(lpPlace)),
