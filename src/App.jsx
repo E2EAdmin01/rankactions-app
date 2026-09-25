@@ -623,14 +623,7 @@ const CSS = `
    usable and the user decides whether each point matters. */
 .cg-warn{margin:1rem;padding:.85rem 1rem;background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.5);border-radius:8px;font-size:.83rem;color:var(--text);line-height:1.6;}
 .cg-tip{font-size:.75rem;color:var(--text2);line-height:1.5;padding:.65rem .85rem;background:var(--s3);border-radius:7px;border-left:2px solid var(--blue);margin-top:.25rem;}
-/* Page type, chips and the location/sector questions */
-.cg-types{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;}
-@media(max-width:560px){.cg-types{grid-template-columns:1fr;}}
-.cg-type{text-align:left;border:1.5px solid var(--border);background:var(--s2);border-radius:9px;padding:.6rem .75rem;cursor:pointer;font-family:var(--font);color:var(--text);}
-.cg-type strong{display:block;font-size:.85rem;}
-.cg-type span{font-size:.72rem;color:var(--text2);line-height:1.4;}
-.cg-type.on{border-color:var(--green);background:var(--gdim);}
-.cg-type.on strong{color:var(--green);}
+/* Chips and the location/sector questions */
 .cg-chips{display:flex;flex-wrap:wrap;gap:.4rem;}
 .cg-chip{border:1px solid var(--border);background:var(--s2);color:var(--text);border-radius:999px;padding:.3rem .7rem;cursor:pointer;font-family:var(--font);font-size:.78rem;display:inline-flex;gap:.35rem;align-items:baseline;}
 .cg-chip em{font-style:normal;font-size:.68rem;color:var(--text3);}
@@ -5937,7 +5930,8 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
 
     // ── Location & sector: everything the form and generate() share ──────
     const lpService    = (pageType === "location" ? locService : secService).trim();
-    const lpSectorName = (otherSector.trim() || sector).trim();
+    // "__other" is the dropdown's Other… entry; the typed sector is used then.
+    const lpSectorName = (sector === "__other" ? otherSector : sector).trim();
     const lpPlace      = pageType === "location" ? (locTown ? townDisplayName(locTown) : "")
                        : pageType === "sector" ? lpSectorName : "";
     const lpMiles      = pageType === "location" && baseTown && locTown && Number.isFinite(locTown.lat)
@@ -6736,18 +6730,18 @@ ${clean}`,
             </div>
             <div className="cg-panel-bd">
               <div className="cg-field">
-                <label>What kind of page?</label>
-                <div className="cg-types" role="group" aria-label="Page type">
-                  {[["blog","Blog article","Answers a question your customers search for"],
-                    ["location","Location page","Your service in a specific town or city"],
-                    ["sector","Sector page","Your service for a specific industry"]].map(([id, title, sub]) => (
-                    <button key={id} type="button" className={`cg-type ${pageType === id ? "on" : ""}`} aria-pressed={pageType === id}
-                      onClick={() => { if (pageType !== id) { setPageType(id); setPhraseEdit(null); setReplaceOk(false); setVolume(null); } }}>
-                      <strong>{title}</strong><span>{sub}</span>
-                    </button>
-                  ))}
+                <label htmlFor="cg-page-type">What kind of page?</label>
+                <select id="cg-page-type" value={pageType}
+                  onChange={e => { const id = e.target.value; if (pageType !== id) { setPageType(id); setPhraseEdit(null); setReplaceOk(false); setVolume(null); } }}>
+                  <option value="blog">Blog article</option>
+                  <option value="location">Location page</option>
+                  <option value="sector">Sector page</option>
+                </select>
+                <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
+                  {pageType === "location" ? "Your service in a specific town or city."
+                    : pageType === "sector" ? "Your service for a specific industry."
+                    : "Answers a question your customers search for."} One page per generate.
                 </div>
-                <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>One page per generate.</div>
               </div>
               {pageType === "blog" && (
               <div className="cg-field">
@@ -6938,22 +6932,26 @@ ${clean}`,
                     onChange={e => { setSecService(e.target.value); setPhraseEdit(null); setReplaceOk(false); setVolume(null); }}/>
                 </div>
                 <div className="cg-field">
-                  <label>Which sector?</label>
-                  <div className="cg-chips">
+                  <label htmlFor="cg-sector">Which sector?</label>
+                  <select id="cg-sector" value={sector}
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (v !== sector) { setSecExtra(""); setPhraseEdit(null); setReplaceOk(false); setVolume(null); }
+                      setSector(v);
+                      if (v !== "__other") setOtherSector("");
+                    }}>
+                    <option value="">Choose a sector…</option>
                     {Object.keys(SECTOR_OPTIONS).map(n => {
                       const has = lpHistory.some(h => h && h.type === "sector" && normPlace(h.place) === normPlace(n));
-                      const on = !otherSector.trim() && sector === n;
-                      return (
-                        <button key={n} type="button" className={`cg-chip ${on ? "on" : ""} ${has ? "has" : ""}`} aria-pressed={on}
-                          onClick={() => { if (!on) { setSecExtra(""); setPhraseEdit(null); setReplaceOk(false); setVolume(null); } setSector(n); setOtherSector(""); }}>
-                          {n}{has && <em>page generated</em>}
-                        </button>
-                      );
+                      return <option key={n} value={n}>{n}{has ? " (page generated)" : ""}</option>;
                     })}
-                  </div>
-                  <label style={{marginTop:".7rem"}}>Or type another</label>
-                  <input placeholder="e.g. Veterinary practices" value={otherSector}
-                    onChange={e => { setOtherSector(e.target.value); setSecExtra(""); setPhraseEdit(null); setReplaceOk(false); setVolume(null); }}/>
+                    <option value="__other">Other…</option>
+                  </select>
+                  {sector === "__other" && (
+                    <input style={{marginTop:".5rem"}} placeholder="Type the sector, e.g. Veterinary practices" value={otherSector} autoFocus
+                      aria-label="Other sector"
+                      onChange={e => { setOtherSector(e.target.value); setSecExtra(""); setPhraseEdit(null); setReplaceOk(false); setVolume(null); }}/>
+                  )}
                 </div>
                 <div className="cg-field">
                   <label>How should we write it?</label>
