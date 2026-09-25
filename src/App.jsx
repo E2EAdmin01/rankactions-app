@@ -1551,7 +1551,9 @@ function townLabel(town, matches) {
   const name = townDisplayName(town);
   // Compared by name and position, not identity: the base town comes back
   // from the saved profile as a copy, and must not count as its own twin.
-  const isSelf = (m) => m.name === town.name && m.lat === town.lat && m.lng === town.lng;
+  // Within ~0.5 mile rather than exact, so a saved copy still matches if
+  // the dataset is ever rebuilt with slightly different coordinates.
+  const isSelf = (m) => m.name === town.name && Math.abs(m.lat - town.lat) < 0.01 && Math.abs(m.lng - town.lng) < 0.01;
   const same = (matches || findTowns(town.name)).filter(m => !isSelf(m));
   if (!same.length) return name;
   if (!same.some(m => m.nation === town.nation)) return `${name}, ${NATION_NAMES[town.nation]}`;
@@ -5886,7 +5888,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     const [locService, setLocService] = useState("");
     const [reach,      setReach]      = useState("local");
     const [radius,     setRadius]     = useState(30);
-    const [moreTowns,  setMoreTowns]  = useState(false);
+    const [townOther,  setTownOther]  = useState(false);  // "Other town…" chosen in the dropdown
     const [smallTowns, setSmallTowns] = useState(false);
     const [locTown,    setLocTown]    = useState(null);   // a town from the list, or { name, custom: true }
     const [otherTown,  setOtherTown]  = useState("");
@@ -5955,11 +5957,30 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     const baseQuery    = normPlace(baseInput);
     const baseSuggestions = baseQuery.length >= 2 && !(baseTown && normPlace(townDisplayName(baseTown)) === baseQuery)
       ? ukTowns().filter(t => normPlace(t.name).startsWith(baseQuery) || normPlace(townDisplayName(t)).startsWith(baseQuery)).slice(0, 6) : [];
+    const sameTown     = (a, b) => !!a && !!b && a.name === b.name && a.lat === b.lat;
     const lpTownList   = pageType !== "location" ? []
                        : reach === "uk" ? majorUkCities().map(t => ({ town: t, miles: null }))
-                       : baseTown ? townsNear(baseTown, radius, { includeSmall: smallTowns, limit: moreTowns ? 80 : 24 }) : [];
+                       : baseTown ? townsNear(baseTown, radius, { includeSmall: smallTowns, limit: 80 }) : [];
+    // Dropdown entries. The chosen town stays listed even after the radius or
+    // UK-wide switch would drop it, so the dropdown never contradicts the
+    // questions shown beneath it.
+    const townKey      = (t) => `${t.name}|${t.lat}|${t.lng}`;
+    const hasTownPage  = (t) => lpHistory.some(h => h && h.type === "location" && normPlace(h.place) === normPlace(townDisplayName(t)));
+    const townOptions  = (() => {
+      const list = lpTownList.slice();
+      if (locTown && !locTown.custom && !townOther && !list.some(x => sameTown(x.town, locTown))) {
+        list.unshift({ town: locTown, miles: baseTown ? milesBetween(baseTown, locTown) : null });
+      }
+      return list.map(({ town: t, miles }) => ({
+        key: townKey(t), town: t,
+        label: [townDisplayName(t),
+                miles != null && reach === "local" ? (miles < 1 ? "your base" : `${Math.round(miles)} mi`) : "",
+                hasTownPage(t) ? "✓ page generated" : ""].filter(Boolean).join(" · "),
+      }));
+    })();
+    const townSelectValue = townOther ? "__other" : (locTown && !locTown.custom ? townKey(locTown) : "");
+    const generatedTowns = [...new Set(lpHistory.filter(h => h && h.type === "location" && h.place).map(h => h.place))];
     const otherMatches = otherTown.trim() ? findTowns(otherTown) : [];
-    const sameTown     = (a, b) => !!a && !!b && a.name === b.name && a.lat === b.lat;
 
     // Choosing a different town or sector clears everything said about the
     // previous one, so answers about Wrexham can never end up on a Mold page.
@@ -5980,7 +6001,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       if (m.length === 1) setBaseTown({ name: m[0].name, lat: m[0].lat, lng: m[0].lng, nation: m[0].nation });
       else if (!v.trim()) setBaseTown(null);
     };
-    const pickTown = (t) => { if (!sameTown(t, locTown)) resetPlace(); setLocTown(t); setOtherTown(""); };
+    const pickTown = (t) => { if (!sameTown(t, locTown)) resetPlace(); setLocTown(t); setOtherTown(""); setTownOther(false); };
     const onOtherTown = (v) => {
       setOtherTown(v); resetPlace();
       const m = findTowns(v);
@@ -6806,7 +6827,7 @@ ${clean}`,
                       <button type="button" className={reach === "uk" ? "on" : ""} aria-pressed={reach === "uk"} onClick={() => setReach("uk")}>UK-wide</button>
                     </div>
                     {reach === "local" && (
-                      <select value={radius} onChange={e => { setRadius(Number(e.target.value)); setMoreTowns(false); }} style={{width:"auto"}} aria-label="Distance">
+                      <select value={radius} onChange={e => setRadius(Number(e.target.value))} style={{width:"auto"}} aria-label="Distance">
                         <option value={15}>within 15 miles</option>
                         <option value={30}>within 30 miles</option>
                         <option value={50}>within 50 miles</option>
@@ -6816,38 +6837,39 @@ ${clean}`,
                 </div>
 
                 <div className="cg-field">
-                  <label>Choose a town or city</label>
-                  {reach === "local" && !baseTown ? (
-                    <div className="cg-note warn">Add where you're based above to see towns near you, or choose UK-wide.</div>
-                  ) : (
-                    <>
-                      <div style={{fontSize:".7rem",color:"var(--text3)",marginBottom:".4rem"}}>
-                        {reach === "uk" ? "Major UK cities." : `Nearest first, straight-line distance from ${townDisplayName(baseTown)}. Places of 10,000 people or more${smallTowns ? ", plus smaller towns" : ""}.`}
-                      </div>
-                      <div className="cg-chips">
-                        {lpTownList.map(({ town: t, miles }) => {
-                          const has = lpHistory.some(h => h && h.type === "location" && normPlace(h.place) === normPlace(townDisplayName(t)));
-                          return (
-                            <button key={`${t.name}${t.lat}`} type="button" className={`cg-chip ${sameTown(t, locTown) ? "on" : ""} ${has ? "has" : ""}`}
-                              aria-pressed={sameTown(t, locTown)} onClick={() => pickTown(t)}>
-                              {townDisplayName(t)}
-                              {miles != null && <em>{miles < 1 ? "your base" : `${Math.round(miles)} mi`}</em>}
-                              {has && <em>page generated</em>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {reach === "local" && (
-                        <div style={{display:"flex",gap:"1rem",marginTop:".45rem",flexWrap:"wrap"}}>
-                          {!moreTowns && lpTownList.length >= 24 && <button type="button" className="cg-linkbtn" onClick={() => setMoreTowns(true)}>Show more</button>}
-                          <button type="button" className="cg-linkbtn" onClick={() => setSmallTowns(v => !v)}>{smallTowns ? "Hide smaller towns" : "Include smaller towns"}</button>
-                        </div>
-                      )}
-                    </>
+                  <label htmlFor="cg-town">Choose a town or city</label>
+                  {reach === "local" && !baseTown && (
+                    <div className="cg-note warn" style={{marginBottom:".4rem"}}>Add where you're based above to see towns near you, or choose UK-wide.</div>
                   )}
-                  <label style={{marginTop:".7rem"}}>Or type another <span style={{fontWeight:400,color:"var(--text3)"}}>anywhere you genuinely work</span></label>
-                  <input placeholder="e.g. Oswestry" value={otherTown} onChange={e => onOtherTown(e.target.value)}/>
-                  {otherMatches.length > 1 && (
+                  <select id="cg-town" value={townSelectValue}
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (v === "__other") { if (!townOther) { resetPlace(); setLocTown(null); } setTownOther(true); return; }
+                      setTownOther(false); setOtherTown("");
+                      const opt = townOptions.find(o => o.key === v);
+                      if (!opt) { resetPlace(); setLocTown(null); return; }
+                      pickTown(opt.town);
+                    }}>
+                    <option value="">{reach === "uk" ? "Choose a city…" : baseTown ? "Choose a town…" : "Choose Other town…"}</option>
+                    {townOptions.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                    <option value="__other">Other town…</option>
+                  </select>
+                  <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
+                    {reach === "uk" ? "Major UK cities." : baseTown ? `Nearest first, straight-line distance from ${townDisplayName(baseTown)}. Places of 10,000 people or more${smallTowns ? ", plus smaller towns" : ""}.` : ""}
+                    {reach === "local" && baseTown && (
+                      <> <button type="button" className="cg-linkbtn" style={{fontSize:".7rem"}} onClick={() => setSmallTowns(v => !v)}>{smallTowns ? "Hide smaller towns" : "Include smaller towns"}</button></>
+                    )}
+                  </div>
+                  {generatedTowns.length > 0 && (
+                    <div className="cg-note" style={{marginTop:".35rem",color:"var(--green)"}}>
+                      ✓ Pages already generated: {generatedTowns.join(", ")}
+                    </div>
+                  )}
+                  {townOther && (
+                  <input style={{marginTop:".5rem"}} placeholder="Type the town, e.g. Oswestry" value={otherTown} autoFocus aria-label="Other town"
+                    onChange={e => onOtherTown(e.target.value)}/>
+                  )}
+                  {townOther && otherMatches.length > 1 && (
                     <div style={{marginTop:".45rem"}}>
                       <div className="cg-note" style={{marginBottom:".35rem"}}>There's more than one {townDisplayName(otherMatches[0])}. Which one?</div>
                       <div className="cg-chips">
