@@ -1491,6 +1491,7 @@ function validateGeneratedHtml(html, { keyword, targetWords, suppliedText, loose
 
 
 
+
 // ── Location & sector pages ────────────────────────────────────────────────
 // Everything below is deterministic and runs in the browser. The AI never
 // decides which towns are near the customer, how far away they are, or whether
@@ -1850,7 +1851,15 @@ function findExperienceClaims(html) {
     /\bwe(?:'ve|’ve| have)\s+(?:over|more than|\d+|many|years|decades)\b/i,
     /\b(?:years|decades)\s+of\s+(?:experience|expertise)\b/i,
     /\bour\s+(?:\w+\s+)?(?:clients|customers)\b/i,
-    /\b(?:trusted by|case stud(?:y|ies)|testimonials?)\b/i,
+    // "case studies" alone is too broad: training pages talk about the case
+    // studies used in sessions (Legal page, 25 Sep 2026). Only the business's
+    // own case studies are a claim.
+    /\btrusted by\b|\btestimonials?\b|\b(?:our|a recent|one of our) case stud(?:y|ies)\b/i,
+    // "we still encounter firms relying on vague consent clauses" is a claim
+    // about the business's own experience in the sector.
+    /\bwe (?:still |often |regularly |frequently |commonly |typically |usually |always )?(?:encounter|come across)\b/i,
+    /\bwe (?:often |regularly |frequently |commonly |typically |usually |always )(?:see|find|meet)\b/i,
+    /\bin our experience\b/i,
     /\bwe\s+(?:support|work with|serve|partner with|help)\s+(?:many|numerous|several|dozens|hundreds|over|more than|a (?:wide|large|growing))\b/i,
     /\b(?:our|we have)\s+(?:extensive|proven|deep|long)\s+(?:experience|track record|expertise)\b/i,
   ];
@@ -2045,6 +2054,8 @@ const COMMITMENT_PATTERNS = [
   /\b(?:clients|customers) (?:tell|told|say|said|often tell|regularly tell|report|find) (?:us|that)\b/i,
   /\b(?:many|most|all|several|some) of our (?:\w+\s+){0,2}(?:clients|customers)\b/i,
   /\bour (?:\w+\s+){0,2}(?:clients|customers) (?:include|range from|tell|say|find|value|rely)\b/i,
+  // "Another reason clients value our support is consistency" (Buckley).
+  /\b(?:clients|customers) (?:value|appreciate|love|rely on|trust|praise|recommend)\b/i,
   /\b(?:award[- ]winning|industry[- ]leading|market[- ]leading)\b|\bwe(?:'re|’re| are) (?:fully |an? )?(?:accredited|certified)\b/i,
 ];
 function findUnsuppliedCommitments(html, suppliedText = "") {
@@ -6656,7 +6667,7 @@ BUILD THIS STRUCTURE:
 4. PAGE BODY inside <article class="article-body">:
    - Opening paragraph: the FIRST SENTENCE contains the search phrase within the first 25 words
    - EXACTLY ${sectionCount} H2 sections, each of about ${perSection} words of body prose (no more than ${Math.round(perSection * 1.15)}) — count as you write
-   - The last H2 section answers 3 questions ${audience} commonly ask about ${lpService}, each as an H3 question with a short answer written as ${bizLabel} ("we"), using only the facts above and general knowledge of the service
+   - The last H2 section answers 3 questions ${audience} commonly ask about ${lpService}, each as an H3 question with a short answer written as ${bizLabel} ("we"), using only the facts above and general knowledge of the service. This section is one of the ${sectionCount} and counts towards the word total: keep each answer to two or three sentences
    - One tip/callout box (green border-left)
    - Internal links: follow the INTERNAL LINK RULES above exactly. Format: <a href="[URL from the allowed list]">[descriptive anchor text]</a>
    - Each internal link should have a comment: <!-- Internal link: link to your [page type] page -->
