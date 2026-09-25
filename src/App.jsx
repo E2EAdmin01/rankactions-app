@@ -1492,6 +1492,7 @@ function validateGeneratedHtml(html, { keyword, targetWords, suppliedText, loose
 
 
 
+
 // ── Location & sector pages ────────────────────────────────────────────────
 // Everything below is deterministic and runs in the browser. The AI never
 // decides which towns are near the customer, how far away they are, or whether
@@ -2050,7 +2051,9 @@ const COMMITMENT_PATTERNS = [
   /\bfree (?:initial |no[- ]obligation )?(?:consultation|audit|review|assessment|quote|call|health[- ]check)\b|\bno[- ]obligation\b/i,
   /\bfixed[- ](?:fee|price)s?\b|\bno hidden (?:fees|costs|charges)\b/i,
   /\bin (?:hours|minutes) rather than (?:days|hours|weeks)\b|\bwithin (?:the hour|minutes|an hour)\b/i,
-  /\bwe(?:'ll| will| can| aim to| always)?\s+(?:\w+\s+){0,3}(?:respond|reply|call (?:you )?back|get back to you)\s+within\b/i,
+  // Words may sit between "respond" and "within": "we typically respond to
+  // urgent enquiries within a few hours" (Manchester page).
+  /\bwe(?:'ll| will| can| aim to| always| typically| usually| normally| generally)?\s+(?:\w+\s+){0,3}(?:respond|reply|call (?:you )?back|get back to you)\b(?:\s+\S+){0,5}?\s+within\b/i,
   /\b(?:clients|customers) (?:tell|told|say|said|often tell|regularly tell|report|find) (?:us|that)\b/i,
   /\b(?:many|most|all|several|some) of our (?:\w+\s+){0,2}(?:clients|customers)\b/i,
   /\bour (?:\w+\s+){0,2}(?:clients|customers) (?:include|range from|tell|say|find|value|rely)\b/i,
@@ -2082,6 +2085,50 @@ function numberAsWords(n) {
   return u ? `${t}[- ]${NUM_WORDS[u]}` : t;
 }
 
+// Statements about what the business does NOT do. After being told never to
+// claim a role it had not been given, the model began denying roles instead:
+// the live Manchester DPO consultancy page (25 Sep 2026) said "we don't take
+// on the statutory role of DPO". A denial the customer never made is as
+// invented as a claim, and worse commercially.
+const NEGATIVE_OFFER_RE = /\bwe (?:don't|don’t|do not|never|cannot|can't|can’t|won't|won’t|will not|are not able to|aren't able to) (?:\w+ )?(?:offer|provide|take on|act as|work with|cover|handle|serve|deal with|accept|undertake|represent)\b/i;
+function findNegativeOfferStatements(html, suppliedText = "") {
+  const supplied = String(suppliedText || "").toLowerCase();
+  const out = [];
+  for (const s of pageBodyText(html).replace(/([.!?])\s+/g, "$1\u0000").split("\u0000")) {
+    const m = s.match(NEGATIVE_OFFER_RE);
+    if (!m || supplied.includes(m[0].toLowerCase())) continue;
+    const short = s.length > 110 ? s.slice(0, 107).replace(/\s+\S*$/, "") + "…" : s;
+    if (!out.includes(short)) out.push(short);
+  }
+  return out;
+}
+
+// Sentences that contradict what the customer tapped: "same day" when they
+// chose next working day (Manchester page), site visits when they chose remote
+// only, an office in the town when they said they have none.
+function findAnswerContradictions(html, { town, answers = {} } = {}) {
+  const t = townDisplayName(town);
+  const sentences = pageBodyText(html).replace(/([.!?])\s+/g, "$1\u0000").split("\u0000");
+  const tRe = t ? escapeRe(t) : null;
+  const rules = [];
+  if (answers.speed === "next" || answers.speed === "remote")
+    rules.push({ re: /\bsame[\s-]day\b/i, why: answers.speed === "next" ? "you chose next working day" : "you chose remote only" });
+  if (answers.speed === "remote")
+    rules.push({ re: /\bon[\s-]site\b|\bin person\b|\bvisit(?:s|ing)? (?:you|your)\b|\bbe with you\b/i, why: "you chose remote only" });
+  if (answers.office === "no" && tRe)
+    rules.push({ re: new RegExp(`\\b(?:our|an?) (?:office|base|branch|team|staff|engineers?)(?: \\w+)? (?:in|at) ${tRe}\\b|\\b(?:we're|we are|we’re) based in ${tRe}\\b`, "i"), why: `you said you have no office or staff in ${t}` });
+  if (answers.worked === "none" && tRe)
+    rules.push({ re: new RegExp(`\\b(?:worked|work|working) with (?:\\w+ ){0,4}(?:in|across|around) ${tRe}\\b|\\bclients in ${tRe}\\b`, "i"), why: `you said you haven't worked in ${t} yet` });
+  const out = [];
+  for (const s of sentences) {
+    const r = rules.find(x => x.re.test(s));
+    if (!r) continue;
+    const short = s.length > 100 ? s.slice(0, 97).replace(/\s+\S*$/, "") + "…" : s;
+    out.push(`"${short}" (${r.why})`);
+  }
+  return out;
+}
+
 // Everything to check on a finished location or sector page, as warnings for
 // the existing "things to check before publishing" panel.
 function validateLocalPage(html, ctx = {}) {
@@ -2094,10 +2141,14 @@ function validateLocalPage(html, ctx = {}) {
     if (voice.includes("we")) w.push(`The page never speaks as your business ("we", "our"). It reads as general advice, and could be any company's page for this ${ctx.type === "sector" ? "sector" : "town"}.`);
     const guide = findBuyersGuideSentences(html);
     if (guide.length) w.push(`Parts of the page read as a buyer's guide to choosing a provider rather than as your service: ${listOf(guide, 2)}. Rewrite them about what you do.`);
+    const denials = findNegativeOfferStatements(html, ctx.suppliedText);
+    if (denials.length) w.push(`The page says what you don't offer, which you never told us. Check it's true, or remove it: ${listOf(denials, 2)}`);
     const promises = findUnsuppliedCommitments(html, ctx.suppliedText);
     if (promises.length) w.push(`The page promises things or quotes clients in ways you didn't tell us about. Check each is true, or remove it: ${listOf(promises, 3)}`);
   }
   if (ctx.type === "location") {
+    const contra = findAnswerContradictions(html, ctx);
+    if (contra.length) w.push(`The page contradicts your answers: ${contra.slice(0, 3).join("; ")}.`);
     w.push(...findMissingLocationAnswers(html, ctx));
     const miss = findMissingDetails(html, ctx.extra, { ignore: [ctx.town, ctx.base] });
     if (miss.length) w.push(`Details from your own words aren't in the page: ${listOf(miss)}.`);
@@ -6105,6 +6156,12 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     const [phraseEdit, setPhraseEdit] = useState(null);   // null = use the suggested phrase
     const [replaceOk,  setReplaceOk]  = useState(false);
     const [volume,     setVolume]     = useState(null);
+    // What the service includes, in the customer's words. Without it the model
+    // guesses the scope: the Manchester page denied acting as DPO on a DPO
+    // consultancy page. Remembered per service in site_profile.serviceScopes.
+    const [scopeText,  setScopeText]  = useState("");
+    const scopeAutoRef = useRef(false);   // true while the text was filled in from the saved profile
+    const [profileTick, setProfileTick] = useState(0);
 
     useEffect(() => {
       let cancelled = false;
@@ -6116,6 +6173,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           const prof = await loadUserData(selectedSite, "site_profile");
           if (!cancelled && prof && typeof prof === "object") {
             savedProfileRef.current = { ...prof };
+            setProfileTick(t => t + 1);
             const b = prof.baseTown;
             if (b && typeof b.name === "string" && Number.isFinite(b.lat) && Number.isFinite(b.lng)) {
               setBaseTown({ name: b.name, lat: b.lat, lng: b.lng, nation: b.nation || "" });
@@ -6183,6 +6241,17 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     const townSelectValue = townOther ? "__other" : (locTown && !locTown.custom ? townKey(locTown) : "");
     const generatedTowns = [...new Set(lpHistory.filter(h => h && h.type === "location" && h.place).map(h => h.place))];
     const otherMatches = otherTown.trim() ? findTowns(otherTown) : [];
+
+    // Fill "What's included" from the list saved for this service. Only text
+    // the form filled in itself is replaced; anything the user typed stays.
+    const scopeKey = normPlace(lpService);
+    useEffect(() => {
+      if (pageType === "blog") return;
+      const saved = (savedProfileRef.current.serviceScopes || {})[scopeKey];
+      if (saved && (!scopeText.trim() || scopeAutoRef.current)) { setScopeText(saved); scopeAutoRef.current = true; }
+      else if (!saved && scopeAutoRef.current) { setScopeText(""); scopeAutoRef.current = false; }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [scopeKey, pageType, profileTick]);
 
     // Choosing a different town or sector clears everything said about the
     // previous one, so answers about Wrexham can never end up on a Mold page.
@@ -6510,6 +6579,16 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         savedBizNameRef.current = bizNameClean;
         saveProfile({ businessName: bizNameClean });
       }
+      // Remember "What's included" for this service.
+      if (pageType !== "blog" && lpService) {
+        const key = normPlace(lpService), prev = savedProfileRef.current.serviceScopes || {};
+        const text = scopeText.trim();
+        if ((prev[key] || "") !== text) {
+          const next = { ...prev };
+          if (text) next[key] = text; else delete next[key];
+          saveProfile({ serviceScopes: next });
+        }
+      }
       // Same for the base town, if it was typed rather than picked.
       if (baseTown && (!savedProfileRef.current.baseTown || savedProfileRef.current.baseTown.name !== baseTown.name
           || savedProfileRef.current.baseTown.lat !== baseTown.lat)) {
@@ -6587,6 +6666,9 @@ CSS to include in <style>:
           } else {
             factLines.push(`- None. ${bizLabel} has told you nothing about its work in ${sectorLower}. Write about what ${sectorLower} organisations need from ${lpService} and how the service meets it, not about the business's track record.`);
           }
+          if (scopeText.trim()) {
+            factLines.push(`- What ${bizLabel}'s ${lpService} includes, in the business's own words (the ONLY services you may describe as offered): "${scopeText.trim().replace(/\s+/g, " ")}"`);
+          }
           if (lpSitePages.length) {
             factLines.push(`- Pages on the site that relate to ${place} (link to them where genuinely relevant; they are in the allowed list): ${lpSitePages.map(p => siteBase + p).join(", ")}`);
           }
@@ -6608,6 +6690,9 @@ CSS to include in <style>:
           // The second Hawarden page (25 Sep 2026) invented all of these once
           // it was told to write as the business.
           never.push(`Service features, packages or promises that are not in the facts above: retained or unlimited support, out-of-hours, evening, weekend or 24/7 cover, response times ("within the hour", "in hours rather than days"), free consultations or audits, fixed fees, guarantees, accreditations, or roles such as acting as the client's DPO.`);
+          // The Manchester page (25 Sep 2026) turned the rule above into a denial:
+          // "we don't take on the statutory role of DPO". Neither claim nor deny.
+          never.push(`What ${bizLabel} does NOT do or offer ("we don't act as…", "we don't work with…"). You don't know, so neither claim nor deny it: if a question touches something not in the facts, say the reader can talk to ${bizLabel} about it.`);
           never.push(`What clients say, think or do: never write "clients tell us", "many of our clients…" or "our clients include…". Describe what ${bizLabel} does, not how clients react to it.`);
           const exampleH1 = isLoc ? `${cap(lpService)} in ${place}` : `${cap(lpPhrase)}`;
           // How the facts must be voiced. The Hawarden test page left them out
@@ -6833,7 +6918,7 @@ ${clean}`,
         // Anything the user typed counts as supplied, so their own prices
         // and figures are never flagged back at them.
         const suppliedText = [kw, biz, bizName, cta, notes,
-          ...(pageType === "blog" ? [] : [lpPhrase, lpService, lpPlace, baseTown ? baseTown.name : "", pageType === "location" ? locExtra : secExtra])].join(" ");
+          ...(pageType === "blog" ? [] : [lpPhrase, lpService, lpPlace, baseTown ? baseTown.name : "", pageType === "location" ? locExtra : secExtra, scopeText])].join(" ");
         const pageWarnings = validateGeneratedHtml(clean, {
           keyword: activeKw,
           targetWords,
@@ -7052,6 +7137,17 @@ ${clean}`,
                   <input placeholder="e.g. GDPR support" value={locService}
                     onChange={e => { setLocService(e.target.value); setPhraseEdit(null); setReplaceOk(false); setVolume(null); }}/>
                 </div>
+                <div className="cg-field">
+                  <label htmlFor="cg-scope">What's included in this service <span style={{fontWeight:400,color:"var(--text3)"}}>optional</span></label>
+                  <textarea id="cg-scope" rows={2} value={scopeText}
+                    onChange={e => { scopeAutoRef.current = false; setScopeText(e.target.value); }}
+                    placeholder="e.g. Acting as your DPO, subject access requests, breach response, staff training"/>
+                  <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
+                    {scopeText.trim()
+                      ? "The page will describe only these as what you offer. Remembered for this service."
+                      : "Without a list, the page won't say what's included or excluded, and invites readers to ask you instead."}
+                  </div>
+                </div>
 
                 <div className="cg-field">
                   <label>How far do you work?</label>
@@ -7189,6 +7285,17 @@ ${clean}`,
                   <label>Service *</label>
                   <input placeholder="e.g. staff support" value={secService}
                     onChange={e => { setSecService(e.target.value); setPhraseEdit(null); setReplaceOk(false); setVolume(null); }}/>
+                </div>
+                <div className="cg-field">
+                  <label htmlFor="cg-scope">What's included in this service <span style={{fontWeight:400,color:"var(--text3)"}}>optional</span></label>
+                  <textarea id="cg-scope" rows={2} value={scopeText}
+                    onChange={e => { scopeAutoRef.current = false; setScopeText(e.target.value); }}
+                    placeholder="e.g. Acting as your DPO, subject access requests, breach response, staff training"/>
+                  <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
+                    {scopeText.trim()
+                      ? "The page will describe only these as what you offer. Remembered for this service."
+                      : "Without a list, the page won't say what's included or excluded, and invites readers to ask you instead."}
+                  </div>
                 </div>
                 <div className="cg-field">
                   <label htmlFor="cg-sector">Which sector?</label>
