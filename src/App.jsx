@@ -1490,6 +1490,7 @@ function validateGeneratedHtml(html, { keyword, targetWords, suppliedText, loose
 }
 
 
+
 // ── Location & sector pages ────────────────────────────────────────────────
 // Everything below is deterministic and runs in the browser. The AI never
 // decides which towns are near the customer, how far away they are, or whether
@@ -1786,7 +1787,9 @@ function findMissingLocationAnswers(html, { town, base, miles, answers = {} } = 
     missing.push(`The page doesn't say you've worked with clients in ${t}.`);
   if (answers.office !== "yes" && base && miles != null && miles >= 1 && normPlace(base.name) !== normPlace(town && town.name)) {
     const d = Math.round(miles);
-    if (!new RegExp(`\\b${d}\\s*(?:-\\s*)?miles?\\b`, "i").test(text)) missing.push(`The distance from ${townDisplayName(base)} (about ${d} miles) isn't in the page.`);
+    const word = numberAsWords(d);
+    const num = word ? `(?:${d}|${word})` : `${d}`;
+    if (!new RegExp(`\\b${num}\\s*(?:-\\s*)?miles?\\b`, "i").test(text)) missing.push(`The distance from ${townDisplayName(base)} (about ${d} miles) isn't in the page.`);
   }
   return missing;
 }
@@ -2025,6 +2028,49 @@ function pageVoiceIssues(html, businessName) {
   return issues;
 }
 
+// Promises and client claims the customer never made. Once the page speaks as
+// the business ("we"), the model fills gaps with plausible offers: the second
+// Hawarden page (25 Sep 2026) promised out-of-hours cover, "unlimited access to
+// our team", responding "in hours rather than days", and reported that
+// "clients tell us…" and "many of our clients… engage us on a retained basis".
+// None were supplied. Anything the customer did type is not flagged.
+const COMMITMENT_PATTERNS = [
+  /\bunlimited\b/i,
+  /\b24\s*\/\s*7\b|\b24 hours a day\b|\bround[- ]the[- ]clock\b|\bout[- ]of[- ]hours\b|\bevenings? and weekends?\b|\bweekend (?:cover|support)\b/i,
+  /\bguarantee[ds]?\b|\bmoney[- ]back\b/i,
+  /\bfree (?:initial |no[- ]obligation )?(?:consultation|audit|review|assessment|quote|call|health[- ]check)\b|\bno[- ]obligation\b/i,
+  /\bfixed[- ](?:fee|price)s?\b|\bno hidden (?:fees|costs|charges)\b/i,
+  /\bin (?:hours|minutes) rather than (?:days|hours|weeks)\b|\bwithin (?:the hour|minutes|an hour)\b/i,
+  /\bwe(?:'ll| will| can| aim to| always)?\s+(?:\w+\s+){0,3}(?:respond|reply|call (?:you )?back|get back to you)\s+within\b/i,
+  /\b(?:clients|customers) (?:tell|told|say|said|often tell|regularly tell|report|find) (?:us|that)\b/i,
+  /\b(?:many|most|all|several|some) of our (?:\w+\s+){0,2}(?:clients|customers)\b/i,
+  /\bour (?:\w+\s+){0,2}(?:clients|customers) (?:include|range from|tell|say|find|value|rely)\b/i,
+  /\b(?:award[- ]winning|industry[- ]leading|market[- ]leading)\b|\bwe(?:'re|’re| are) (?:fully |an? )?(?:accredited|certified)\b/i,
+];
+function findUnsuppliedCommitments(html, suppliedText = "") {
+  const supplied = String(suppliedText || "").toLowerCase();
+  const out = [];
+  for (const s of pageBodyText(html).replace(/([.!?])\s+/g, "$1\u0000").split("\u0000")) {
+    const hit = COMMITMENT_PATTERNS.map(p => s.match(p)).find(Boolean);
+    if (!hit) continue;
+    // The customer said it themselves ("we offer a free consultation").
+    if (supplied.includes(hit[0].toLowerCase())) continue;
+    const short = s.length > 110 ? s.slice(0, 107).replace(/\s+\S*$/, "") + "…" : s;
+    if (!out.includes(short)) out.push(short);
+  }
+  return out;
+}
+
+// "about six miles" and "about 6 miles" are the same fact.
+const NUM_WORDS = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen"];
+const TENS_WORDS = ["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
+function numberAsWords(n) {
+  if (!Number.isInteger(n) || n < 0 || n > 99) return null;
+  if (n < 20) return NUM_WORDS[n];
+  const t = TENS_WORDS[Math.floor(n / 10)], u = n % 10;
+  return u ? `${t}[- ]${NUM_WORDS[u]}` : t;
+}
+
 // Everything to check on a finished location or sector page, as warnings for
 // the existing "things to check before publishing" panel.
 function validateLocalPage(html, ctx = {}) {
@@ -2037,6 +2083,8 @@ function validateLocalPage(html, ctx = {}) {
     if (voice.includes("we")) w.push(`The page never speaks as your business ("we", "our"). It reads as general advice, and could be any company's page for this ${ctx.type === "sector" ? "sector" : "town"}.`);
     const guide = findBuyersGuideSentences(html);
     if (guide.length) w.push(`Parts of the page read as a buyer's guide to choosing a provider rather than as your service: ${listOf(guide, 2)}. Rewrite them about what you do.`);
+    const promises = findUnsuppliedCommitments(html, ctx.suppliedText);
+    if (promises.length) w.push(`The page promises things or quotes clients in ways you didn't tell us about. Check each is true, or remove it: ${listOf(promises, 3)}`);
   }
   if (ctx.type === "location") {
     w.push(...findMissingLocationAnswers(html, ctx));
@@ -6026,6 +6074,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     // Page type: blog (unchanged), location or sector. See the Location &
     // sector pages section at module level for the rules behind these.
     const [pageType,   setPageType]   = useState("blog");
+    const autoWordRef = useRef(false);   // true while the length is the location default we set
     const [baseInput,  setBaseInput]  = useState("");
     const [baseTown,   setBaseTown]   = useState(null);   // { name, lat, lng, nation }
     const [locService, setLocService] = useState("");
@@ -6545,6 +6594,10 @@ CSS to include in <style>:
               : `A regulation, standard or regulator you are not certain applies to ${sectorLower} in the UK. Name at most three in total. A person checks every one before publishing.`,
           ];
           never.push("Prices, fees, statistics or percentages unless they appear in the details above.");
+          // The second Hawarden page (25 Sep 2026) invented all of these once
+          // it was told to write as the business.
+          never.push(`Service features, packages or promises that are not in the facts above: retained or unlimited support, out-of-hours, evening, weekend or 24/7 cover, response times ("within the hour", "in hours rather than days"), free consultations or audits, fixed fees, guarantees, accreditations, or roles such as acting as the client's DPO.`);
+          never.push(`What clients say, think or do: never write "clients tell us", "many of our clients…" or "our clients include…". Describe what ${bizLabel} does, not how clients react to it.`);
           const exampleH1 = isLoc ? `${cap(lpService)} in ${place}` : `${cap(lpPhrase)}`;
           // How the facts must be voiced. The Hawarden test page left them out
           // or turned them into generic tips ("a provider who can be on site
@@ -6898,7 +6951,7 @@ ${clean}`,
         {/* Privacy notice — shown prominently per GDPR best practice */}
         <div className="cg-privacy">
           <span className="cg-privacy-icon">🔒</span>
-          <span><strong>Data notice:</strong> Only the details you enter below are sent to the AI to generate content. No personal data, no Search Console data, and no user information is included in the request. Generated articles are not stored — they exist in your browser only until you download or copy them.</span>
+          <span><strong>Data notice:</strong> Only the details you enter below, plus the addresses of pages on your site so that links point somewhere real, are sent to the AI to generate content. No personal data, no Search Console performance figures and no user information are included. Generated articles are not stored — they exist in your browser only until you download or copy them. For location and sector pages we keep a short numerical fingerprint of the wording, which can't be turned back into text, so we can warn you if a later page repeats it.</span>
         </div>
 
         <div className="cg-grid">
@@ -6912,7 +6965,18 @@ ${clean}`,
               <div className="cg-field">
                 <label htmlFor="cg-page-type">What kind of page?</label>
                 <select id="cg-page-type" value={pageType}
-                  onChange={e => { const id = e.target.value; if (pageType !== id) { setPageType(id); setPhraseEdit(null); setReplaceOk(false); setVolume(null); } }}>
+                  onChange={e => {
+                    const id = e.target.value;
+                    if (pageType === id) return;
+                    setPageType(id); setPhraseEdit(null); setReplaceOk(false); setVolume(null);
+                    // A town service page is shorter than an article: 600 words by
+                    // default (the second Hawarden page ran to 1,553 at 1,000).
+                    // Only the standard 1,000 changes to 600, and it changes back
+                    // when leaving location pages. A length the user picked from
+                    // the dropdown is always left alone.
+                    if (id === "location" && wordCount === "1000") { setWordCount("600"); autoWordRef.current = true; }
+                    else if (pageType === "location" && autoWordRef.current && wordCount === "600") { setWordCount("1000"); autoWordRef.current = false; }
+                  }}>
                   <option value="blog">Blog article</option>
                   <option value="location">Location page</option>
                   <option value="sector">Sector page</option>
@@ -7220,7 +7284,7 @@ ${clean}`,
                 </div>
                 <div className="cg-field">
                   <label>Word count</label>
-                  <select value={wordCount} onChange={e=>setWordCount(e.target.value)}>
+                  <select value={wordCount} onChange={e=>{ autoWordRef.current = false; setWordCount(e.target.value); }}>
                     {WORD_COUNT_OPTIONS.map(n => (
                       <option key={n} value={String(n)}>~{n.toLocaleString()} words</option>
                     ))}
