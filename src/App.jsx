@@ -649,6 +649,19 @@ const CSS = `
 .cg-linkbtn:disabled{color:var(--text3);cursor:not-allowed;text-decoration:none;}
 .cg-note{font-size:.74rem;color:var(--text2);line-height:1.5;}
 .cg-note.warn{color:var(--amber);}
+.cg-pick{position:relative;}
+.cg-pick-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:.5rem;text-align:left;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:.55rem .75rem;color:var(--text);font-family:var(--font);font-size:.83rem;cursor:pointer;}
+.cg-pick-btn:focus-visible,.cg-pick-btn.open{border-color:var(--green);outline:none;}
+.cg-pick-ph{color:var(--text3);}
+.cg-pick-val{display:flex;gap:.45rem;align-items:baseline;flex-wrap:wrap;min-width:0;}
+.cg-pick-val em,.cg-pick-opt em{font-style:normal;font-size:.72rem;color:var(--text3);}
+.cg-pick-val b,.cg-pick-opt b{font-weight:600;font-size:.7rem;color:var(--green);}
+.cg-pick-caret{color:var(--text3);font-size:.75rem;flex:none;}
+.cg-pick-list{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;max-height:280px;overflow-y:auto;margin:0;padding:.25rem;list-style:none;background:var(--s1);border:1px solid var(--border);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.35);}
+.cg-pick-opt{display:flex;gap:.45rem;align-items:baseline;padding:.42rem .6rem;border-radius:6px;font-size:.82rem;cursor:pointer;color:var(--text);}
+.cg-pick-opt.active{background:var(--s3);}
+.cg-pick-opt.sel{color:var(--green);font-weight:600;}
+.cg-pick-opt.other{border-top:1px solid var(--border);border-radius:0 0 6px 6px;margin-top:.2rem;color:var(--text2);}
 .cg-loading-msgs{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;padding:3rem;}
 .cg-loading-msgs .spinner{width:22px;height:22px;}
 .cg-loading-msg{font-size:.85rem;color:var(--text2);text-align:center;}
@@ -2004,6 +2017,87 @@ function validateLocalPage(html, ctx = {}) {
     if (worst) w.push(`Much of this page's wording repeats your ${worst.place} page (about ${Math.round(worst.s * 100)}% similar). Google treats near-identical pages as doorway pages. Add more that's specific to this ${ctx.type === "sector" ? "sector" : "town"}, or rewrite the repeated sections.`);
   }
   return w;
+}
+
+// Town dropdown that always opens downwards. A native <select> lets the
+// browser choose the direction, and it opens upwards whenever there is more
+// room above; that looked broken mid-form (25 Sep 2026). Built as an ARIA
+// listbox so keyboard and screen-reader use still work: arrows, Home/End,
+// Enter, Escape, and typing a letter jumps to the first matching town.
+// Defined at module level, not inside ContentGenerator, so it keeps its open
+// state when the form re-renders.
+function TownPicker({ id, labelId, placeholder, options, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(-1);
+  const wrapRef = useRef(null);
+  const listRef = useRef(null);
+  const typed = useRef({ text: "", at: 0 });
+  const selectedIndex = options.findIndex(o => o.key === value);
+  const selected = selectedIndex >= 0 ? options[selectedIndex] : null;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || active < 0 || !listRef.current) return;
+    const el = listRef.current.querySelector(`[data-index="${active}"]`);
+    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest" });
+  }, [open, active]);
+
+  const openList = () => { typed.current = { text: "", at: 0 }; setActive(selectedIndex >= 0 ? selectedIndex : 0); setOpen(true); };
+  const choose = (i) => { const o = options[i]; if (!o) return; onChange(o.key); setOpen(false); };
+
+  const onKeyDown = (e) => {
+    const last = options.length - 1;
+    if (!open) {
+      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) { e.preventDefault(); openList(); }
+      return;
+    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive(a => Math.min(last, a + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive(a => Math.max(0, a - 1)); }
+    else if (e.key === "Home") { e.preventDefault(); setActive(0); }
+    else if (e.key === "End") { e.preventDefault(); setActive(last); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(active); }
+    else if (e.key === "Escape" || e.key === "Tab") { setOpen(false); }
+    else if (e.key.length === 1 && /\S/.test(e.key)) {
+      const now = Date.now();
+      typed.current = { text: (now - typed.current.at < 700 ? typed.current.text : "") + e.key.toLowerCase(), at: now };
+      const q = typed.current.text;
+      const i = options.findIndex(o => !o.isOther && o.name.toLowerCase().startsWith(q));
+      if (i >= 0) setActive(i);
+    }
+  };
+
+  return (
+    <div className="cg-pick" ref={wrapRef}>
+      <button id={id} type="button" className={`cg-pick-btn ${open ? "open" : ""}`}
+        aria-haspopup="listbox" aria-expanded={open} aria-labelledby={`${labelId} ${id}`}
+        aria-controls={`${id}-list`} aria-activedescendant={open && active >= 0 ? `${id}-opt-${active}` : undefined}
+        onClick={() => (open ? setOpen(false) : openList())} onKeyDown={onKeyDown}>
+        {selected
+          ? <span className="cg-pick-val">{selected.name}{selected.detail && <em>{selected.detail}</em>}{selected.generated && <b>✓ page generated</b>}</span>
+          : <span className="cg-pick-ph">{placeholder}</span>}
+        <span className="cg-pick-caret" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <ul id={`${id}-list`} className="cg-pick-list" role="listbox" aria-labelledby={labelId} ref={listRef} tabIndex={-1}>
+          {options.map((o, i) => (
+            <li key={o.key} id={`${id}-opt-${i}`} data-index={i} role="option" aria-selected={o.key === value}
+              className={`cg-pick-opt ${i === active ? "active" : ""} ${o.key === value ? "sel" : ""} ${o.isOther ? "other" : ""}`}
+              onMouseEnter={() => setActive(i)} onMouseDown={e => e.preventDefault()} onClick={() => choose(i)}>
+              <span>{o.name}</span>
+              {o.detail && <em>{o.detail}</em>}
+              {o.generated && <b>✓ page generated</b>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 async function callClaude(userMsg, systemMsg, mode = 'standard') {
@@ -5972,10 +6066,9 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         list.unshift({ town: locTown, miles: baseTown ? milesBetween(baseTown, locTown) : null });
       }
       return list.map(({ town: t, miles }) => ({
-        key: townKey(t), town: t,
-        label: [townDisplayName(t),
-                miles != null && reach === "local" ? (miles < 1 ? "your base" : `${Math.round(miles)} mi`) : "",
-                hasTownPage(t) ? "✓ page generated" : ""].filter(Boolean).join(" · "),
+        key: townKey(t), town: t, name: townDisplayName(t),
+        detail: miles != null && reach === "local" ? (miles < 1 ? "your base" : `${Math.round(miles)} mi`) : "",
+        generated: hasTownPage(t),
       }));
     })();
     const townSelectValue = townOther ? "__other" : (locTown && !locTown.custom ? townKey(locTown) : "");
@@ -6837,23 +6930,20 @@ ${clean}`,
                 </div>
 
                 <div className="cg-field">
-                  <label htmlFor="cg-town">Choose a town or city</label>
+                  <label id="cg-town-label">Choose a town or city</label>
                   {reach === "local" && !baseTown && (
                     <div className="cg-note warn" style={{marginBottom:".4rem"}}>Add where you're based above to see towns near you, or choose UK-wide.</div>
                   )}
-                  <select id="cg-town" value={townSelectValue}
-                    onChange={e => {
-                      const v = e.target.value;
+                  <TownPicker id="cg-town" labelId="cg-town-label" value={townSelectValue}
+                    placeholder={reach === "uk" ? "Choose a city…" : baseTown ? "Choose a town…" : "Choose Other town…"}
+                    options={[...townOptions, { key: "__other", name: "Other town…", isOther: true }]}
+                    onChange={v => {
                       if (v === "__other") { if (!townOther) { resetPlace(); setLocTown(null); } setTownOther(true); return; }
                       setTownOther(false); setOtherTown("");
                       const opt = townOptions.find(o => o.key === v);
                       if (!opt) { resetPlace(); setLocTown(null); return; }
                       pickTown(opt.town);
-                    }}>
-                    <option value="">{reach === "uk" ? "Choose a city…" : baseTown ? "Choose a town…" : "Choose Other town…"}</option>
-                    {townOptions.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-                    <option value="__other">Other town…</option>
-                  </select>
+                    }}/>
                   <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
                     {reach === "uk" ? "Major UK cities." : baseTown ? `Nearest first, straight-line distance from ${townDisplayName(baseTown)}. Places of 10,000 people or more${smallTowns ? ", plus smaller towns" : ""}.` : ""}
                     {reach === "local" && baseTown && (
