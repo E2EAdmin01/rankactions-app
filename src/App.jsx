@@ -623,6 +623,39 @@ const CSS = `
    usable and the user decides whether each point matters. */
 .cg-warn{margin:1rem;padding:.85rem 1rem;background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.5);border-radius:8px;font-size:.83rem;color:var(--text);line-height:1.6;}
 .cg-tip{font-size:.75rem;color:var(--text2);line-height:1.5;padding:.65rem .85rem;background:var(--s3);border-radius:7px;border-left:2px solid var(--blue);margin-top:.25rem;}
+/* Page type, chips and the location/sector questions */
+.cg-types{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;}
+@media(max-width:560px){.cg-types{grid-template-columns:1fr;}}
+.cg-type{text-align:left;border:1.5px solid var(--border);background:var(--s2);border-radius:9px;padding:.6rem .75rem;cursor:pointer;font-family:var(--font);color:var(--text);}
+.cg-type strong{display:block;font-size:.85rem;}
+.cg-type span{font-size:.72rem;color:var(--text2);line-height:1.4;}
+.cg-type.on{border-color:var(--green);background:var(--gdim);}
+.cg-type.on strong{color:var(--green);}
+.cg-chips{display:flex;flex-wrap:wrap;gap:.4rem;}
+.cg-chip{border:1px solid var(--border);background:var(--s2);color:var(--text);border-radius:999px;padding:.3rem .7rem;cursor:pointer;font-family:var(--font);font-size:.78rem;display:inline-flex;gap:.35rem;align-items:baseline;}
+.cg-chip em{font-style:normal;font-size:.68rem;color:var(--text3);}
+.cg-chip.on{background:var(--green);border-color:var(--green);color:#fff;}
+.cg-chip.on em{color:rgba(255,255,255,.8);}
+.cg-chip.has{border-style:dashed;}
+.cg-seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.cg-seg button{border:0;background:var(--s2);color:var(--text);padding:.4rem .9rem;cursor:pointer;font-family:var(--font);font-size:.8rem;}
+.cg-seg button.on{background:var(--green);color:#fff;}
+.cg-gate{border:1.5px solid var(--border);border-radius:10px;padding:.85rem;background:var(--s2);display:flex;flex-direction:column;gap:.7rem;}
+.cg-gate.ok{border-color:var(--green);}
+.cg-gate.stop{border-color:var(--red);}
+.cg-gate-h{font-weight:600;font-size:.88rem;}
+.cg-gate-sub{font-size:.75rem;color:var(--text2);line-height:1.5;}
+.cg-q-l{font-size:.8rem;font-weight:600;margin-bottom:.35rem;}
+.cg-facts{font-size:.76rem;color:var(--text2);line-height:1.55;background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:.6rem .75rem;}
+.cg-facts ul{margin:.25rem 0 0;padding-left:1.1rem;}
+.cg-status{font-size:.76rem;line-height:1.5;display:flex;gap:.45rem;align-items:flex-start;}
+.cg-status i{width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none;margin-top:.35rem;}
+.cg-status.ok i{background:var(--green);}
+.cg-status.stop i{background:var(--red);}
+.cg-linkbtn{background:none;border:0;padding:0;color:var(--green);text-decoration:underline;cursor:pointer;font-family:var(--font);font-size:.75rem;}
+.cg-linkbtn:disabled{color:var(--text3);cursor:not-allowed;text-decoration:none;}
+.cg-note{font-size:.74rem;color:var(--text2);line-height:1.5;}
+.cg-note.warn{color:var(--amber);}
 .cg-loading-msgs{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.75rem;padding:3rem;}
 .cg-loading-msgs .spinner{width:22px;height:22px;}
 .cg-loading-msg{font-size:.85rem;color:var(--text2);text-align:center;}
@@ -1376,7 +1409,7 @@ function findUnverifiedFigures(html, suppliedText = "") {
   return found;
 }
 
-function validateGeneratedHtml(html, { keyword, targetWords, suppliedText } = {}) {
+function validateGeneratedHtml(html, { keyword, targetWords, suppliedText, looseTitle = false } = {}) {
   const warnings = [];
   if (!html || typeof html !== "string") return warnings;
   const kw = String(keyword || "").trim();
@@ -1384,7 +1417,9 @@ function validateGeneratedHtml(html, { keyword, targetWords, suppliedText } = {}
   if (kw) {
     const title = tagInner(html, "title");
     const h1 = tagInner(html, "h1");
-    if (title && !kwPresent(kw, title)) warnings.push(`The title tag doesn't contain "${kw}".`);
+    // Location and sector pages write the search phrase as natural English
+    // ("GDPR support in Wrexham"), so their title gets the H1's in-order check.
+    if (title && !(looseTitle ? kwNear(kw, title) : kwPresent(kw, title))) warnings.push(`The title tag doesn't contain "${kw}".`);
     if (h1 && !kwNear(kw, h1)) warnings.push(`The H1 doesn't contain "${kw}".`);
 
     // Case drift. Only meaningful when the keyword itself carries capitals —
@@ -1446,6 +1481,534 @@ function validateGeneratedHtml(html, { keyword, targetWords, suppliedText } = {}
   }
 
   return warnings;
+}
+
+// ── Location & sector pages ────────────────────────────────────────────────
+// Everything below is deterministic and runs in the browser. The AI never
+// decides which towns are near the customer, how far away they are, or whether
+// a page is different enough to publish: those are computed here, and the
+// checks after generation are the net for what the prompt cannot enforce.
+
+// UK towns and cities with at least 3,000 people, from GeoNames (CC BY 4.0,
+// geonames.org), built 24 Sep 2026. Format: name|lat|lng|nation|big, where
+// nation is E/W/S/N and big marks places of 10,000+. Sorted largest first, so
+// the first match for an ambiguous name is the most populous one.
+// Coordinates are reliable; GeoNames population figures are NOT consistent for
+// the UK (some are districts, e.g. Birkenhead counts the whole Wirral), so they
+// are used only for the 10,000+ flag and never to rank cities for the user.
+const UK_TOWNS_DATA = "London|51.509|-0.126|E|1;Birmingham|52.481|-1.9|E|1;Liverpool|53.411|-2.978|E|1;Nottingham|52.954|-1.15|E|1;Sheffield|53.383|-1.466|E|1;Bristol|51.455|-2.597|E|1;Glasgow|55.865|-4.258|S|1;Leicester|52.639|-1.132|E|1;Edinburgh|55.952|-3.196|S|1;Leeds|53.796|-1.548|E|1;Cardiff|51.48|-3.18|W|1;Manchester|53.481|-2.237|E|1;Stoke-on-Trent|53.004|-2.185|E|1;Coventry|52.407|-1.512|E|1;Sunderland|54.905|-1.382|E|1;Birkenhead|53.393|-3.015|E|1;Islington|51.536|-0.103|E|1;Reading|51.456|-0.971|E|1;Kingston upon Hull|53.745|-0.335|E|1;Preston|53.763|-2.705|E|1;Newport|51.588|-2.998|W|1;Swansea|51.621|-3.943|W|1;Bradford|53.794|-1.752|E|1;Southend-on-Sea|51.538|0.714|E|1;Belfast|54.597|-5.925|N|1;Derby|52.923|-1.477|E|1;Plymouth|50.372|-4.143|E|1;Luton|51.88|-0.417|E|1;Wolverhampton|52.585|-2.123|E|1;Southampton|50.904|-1.404|E|1;Blackpool|53.817|-3.05|E|1;Milton Keynes|52.042|-0.756|E|1;Northampton|52.25|-0.883|E|1;Norwich|52.628|1.298|E|1;Dudley|52.5|-2.083|E|1;Aberdeen|57.144|-2.098|S|1;Portsmouth|50.799|-1.091|E|1;Newcastle upon Tyne|54.973|-1.614|E|1;Sutton|51.35|-0.2|E|1;Swindon|51.558|-1.781|E|1;Crawley|51.113|-0.183|E|1;Ipswich|52.059|1.155|E|1;Wigan|53.543|-2.637|E|1;Croydon|51.383|-0.1|E|1;Walsall|52.585|-1.984|E|1;Mansfield|53.133|-1.2|E|1;Oxford|51.752|-1.256|E|1;Warrington|53.393|-2.58|E|1;Slough|51.509|-0.595|E|1;Bournemouth|50.72|-1.879|E|1;Peterborough|52.574|-0.248|E|1;Cambridge|52.2|0.117|E|1;Doncaster|53.523|-1.131|E|1;York|53.958|-1.083|E|1;Poole|50.714|-1.985|E|1;Gloucester|51.866|-2.243|E|1;Burnley|53.8|-2.233|E|1;Huddersfield|53.649|-1.784|E|1;Telford|52.677|-2.449|E|1;Dundee|56.469|-2.975|S|1;Blackburn|53.75|-2.483|E|1;Basildon|51.568|0.458|E|1;Middlesbrough|54.576|-1.235|E|1;Bolton|53.583|-2.433|E|1;Stockport|53.41|-2.158|E|1;Brighton|50.828|-0.139|E|1;West Bromwich|52.519|-1.994|E|1;Grimsby|53.565|-0.076|E|1;Hastings|50.855|0.573|E|1;High Wycombe|51.629|-0.749|E|1;Watford|51.655|-0.396|E|1;Saint Peters|51.367|1.417|E|1;Burton upon Trent|52.807|-1.643|E|1;Colchester|51.889|0.904|E|1;Eastbourne|50.769|0.285|E|1;Exeter|50.724|-3.528|E|1;Rotherham|53.43|-1.357|E|1;Cheltenham|51.9|-2.08|E|1;Lincoln|53.227|-0.538|E|1;Chesterfield|53.25|-1.417|E|1;Chelmsford|51.736|0.47|E|1;Dagenham|51.55|0.167|E|1;Basingstoke|51.262|-1.087|E|1;Maidstone|51.267|0.517|E|1;Sutton Coldfield|52.567|-1.817|E|1;Bedford|52.135|-0.466|E|1;Oldham|53.541|-2.118|E|1;Enfield Town|51.651|-0.085|E|1;Woking|51.319|-0.559|E|1;St Helens|53.45|-2.733|E|1;Worcester|52.189|-2.22|E|1;Gillingham|51.389|0.549|E|1;Worthing|50.818|-0.375|E|1;Rochdale|53.618|-2.155|E|1;Solihull|52.414|-1.781|E|1;Royal Leamington Spa|52.285|-1.52|E|1;Romford|51.575|0.186|E|1;Bath|51.375|-2.362|E|1;Harlow|51.777|0.112|E|1;Nuneaton|52.523|-1.465|E|1;Darlington|54.524|-1.55|E|1;Southport|53.646|-3.01|E|1;Chester|53.191|-2.892|E|1;Stevenage|51.902|-0.203|E|1;Wembley|51.552|-0.297|E|1;Grays|51.476|0.325|E|1;Harrogate|53.991|-1.537|E|1;Hartlepool|54.686|-1.21|E|1;Cannock|52.69|-2.031|E|1;Hemel Hempstead|51.754|-0.45|E|1;St Albans|51.75|-0.333|E|1;Redditch|52.306|-1.946|E|1;South Shields|54.999|-1.432|E|1;Derry|54.998|-7.309|N|1;Weston-super-Mare|51.346|-2.977|E|1;Halifax|53.717|-1.85|E|1;Beckenham|51.409|-0.025|E|1;Tamworth|52.634|-1.696|E|1;Scunthorpe|53.579|-0.654|E|1;Stockton-on-Tees|54.568|-1.319|E|1;Wakefield|53.683|-1.498|E|1;Carlisle|54.895|-2.938|E|1;Gateshead|54.962|-1.602|E|1;Lisburn|54.523|-6.035|N|1;Fylde|53.833|-2.917|E|1;Paisley|55.832|-4.433|S|1;Bracknell|51.414|-0.751|E|1;Newcastle under Lyme|53|-2.233|E|1;Crewe|53.098|-2.442|E|1;Chatham|51.379|0.528|E|1;Hove|50.831|-0.167|E|1;Aylesbury|51.817|-0.815|E|1;East Kilbride|55.764|-4.177|S|1;Rugby|52.371|-1.264|E|1;Salford|53.488|-2.29|E|1;Purley|51.337|-0.112|E|1;Guildford|51.235|-0.574|E|1;Shrewsbury|52.71|-2.752|E|1;Barnsley|53.55|-1.483|E|1;Lowestoft|52.475|1.752|E|1;Gosport|50.795|-1.129|E|1;Southall|51.509|-0.371|E|1;Stafford|52.805|-2.116|E|1;Royal Tunbridge Wells|51.133|0.263|E|1;Ellesmere Port|53.279|-2.901|E|1;Folkestone|51.082|1.167|E|1;Hounslow|51.468|-0.361|E|1;Wrexham|53.047|-2.991|W|1;Torquay|50.462|-3.525|E|1;Maidenhead|51.523|-0.72|E|1;Kingswood|51.453|-2.508|E|1;Taunton|51.015|-3.103|E|1;Waterlooville|50.881|-1.03|E|1;Macclesfield|53.26|-2.126|E|1;Bognor Regis|50.782|-0.68|E|1;Newtownabbey|54.66|-5.909|N|1;Kettering|52.398|-0.726|E|1;Buckley|53.167|-3.083|W|1;Great Yarmouth|52.608|1.731|E|1;Runcorn|53.342|-2.731|E|1;Ashford|51.146|0.874|E|1;Tonypandy|51.622|-3.455|W|1;Scarborough|54.28|-0.404|E|1;Widnes|53.362|-2.734|E|1;Aldershot|51.248|-0.764|E|1;Bury|53.6|-2.3|E|1;Barking|51.533|0.083|E|1;Castleford|53.726|-1.363|E|1;Hereford|52.057|-2.715|E|1;Bangor|54.653|-5.669|N|1;Stroud|51.75|-2.2|E|1;Margate|51.381|1.386|E|1;Loughborough|52.767|-1.2|E|1;Welwyn Garden City|51.802|-0.207|E|1;Farnborough|51.294|-0.756|E|1;Rhondda|51.659|-3.449|W|1;Craigavon|54.447|-6.387|N|1;Wallasey|53.423|-3.065|E|1;Littlehampton|50.811|-0.541|E|1;Bridgend|51.506|-3.577|W|1;Bootle|53.467|-3.017|E|1;Weymouth|50.614|-2.46|E|1;Fareham|50.852|-1.179|E|1;Morley|53.74|-1.599|E|1;Cheshunt|51.7|-0.03|E|1;Kidderminster|52.388|-2.25|E|1;Corby|52.496|-0.689|E|1;Dartford|51.447|0.214|E|1;Castlereagh|54.574|-5.885|N|1;Dewsbury|53.691|-1.629|E|1;Livingston|55.903|-3.523|S|1;Stourbridge|52.456|-2.143|E|1;Sale|53.425|-2.324|E|1;Halesowen|52.449|-2.049|E|1;Canterbury|51.279|1.08|E|1;Huyton|53.411|-2.839|E|1;Barry|51.4|-3.284|W|1;Gravesend|51.442|0.371|E|1;Eastleigh|50.967|-1.35|E|1;Acton|51.509|-0.276|E|1;Washington|54.9|-1.517|E|1;Braintree|51.878|0.553|E|1;Hamilton|55.767|-4.033|S|1;Brentwood|51.621|0.306|E|1;Esher|51.37|-0.367|E|1;Crosby|53.478|-3.033|E|1;Reigate|51.237|-0.206|E|1;Dunstable|51.886|-0.523|E|1;Morecambe|54.068|-2.861|E|1;Cumbernauld|55.947|-3.991|S|1;Redhill|51.24|-0.17|E|1;Horsham|51.063|-0.328|E|1;Staines|51.431|-0.506|E|1;Batley|53.703|-1.634|E|1;Wellingborough|52.303|-0.694|E|1;Clacton-on-Sea|51.79|1.156|E|1;Dunfermline|56.072|-3.459|S|1;Bletchley|51.993|-0.735|E|1;Keighley|53.868|-1.907|E|1;Hayes|51.516|-0.423|E|1;Paignton|50.436|-3.568|E|1;Llanelli|51.682|-4.162|W|1;Kirkcaldy|56.117|-3.16|S|1;Bromsgrove|52.336|-2.06|E|1;Sittingbourne|51.341|0.733|E|1;South Benfleet|51.553|0.56|E|1;Banbury|52.063|-1.342|E|1;West Bridgford|52.93|-1.125|E|1;Mitcham|51.403|-0.168|E|1;Morden|51.398|-0.198|E|1;Cwmbran|51.654|-3.023|W|1;Long Eaton|52.899|-1.271|E|1;Durham|54.777|-1.576|E|1;Northwich|53.259|-2.52|E|1;Ayr|55.463|-4.634|S|1;Perth|56.395|-3.431|S|1;Lancaster|54.046|-2.8|E|1;Tipton|52.53|-2.068|E|1;Inverness|57.479|-4.224|S|1;Kilmarnock|55.612|-4.496|S|1;Banstead|51.322|-0.207|E|1;Neath|51.663|-3.804|W|1;King's Lynn|52.752|0.395|E|1;Winchester|51.065|-1.319|E|1;Barrow in Furness|54.111|-3.228|E|1;Yeovil|50.942|-2.632|E|1;Middleton|53.55|-2.2|E|1;Havant|50.857|-0.986|E|1;Carshalton|51.368|-0.168|E|1;Hinckley|52.539|-1.376|E|1;Salisbury|51.069|-1.796|E|1;Pontefract|53.691|-1.313|E|1;Coatbridge|55.862|-4.025|S|1;Sutton in Ashfield|53.125|-1.261|E|1;Grantham|52.911|-0.642|E|1;Merthyr Tydfil|51.748|-3.378|W|1;Great Sankey|53.392|-2.64|E|1;Greenock|55.948|-4.761|S|1;Ashton-under-Lyne|53.489|-2.099|E|1;Leigh|53.496|-2.52|E|1;Leatherhead|51.297|-0.334|E|1;Letchworth Garden City|51.979|-0.227|E|1;Newark on Trent|53.067|-0.817|E|1;Worksop|53.302|-1.124|E|1;Bury St Edmunds|52.246|0.711|E|1;Kirkby|53.481|-2.892|E|1;Wallsend|54.991|-1.534|E|1;Redruth|50.233|-5.224|E|1;Welling|51.462|0.108|E|1;Christchurch|50.736|-1.781|E|1;Andover|51.211|-1.494|E|1;Stretford|53.45|-2.317|E|1;Dover|51.126|1.313|E|1;Hatfield|51.763|-0.224|E|1;Altrincham|53.388|-2.348|E|1;Coity|51.522|-3.555|W|1;Newburn|54.988|-1.744|E|1;Boston|52.976|-0.027|E|1;Lytham St Annes|53.743|-2.997|E|1;Bridgwater|51.128|-3.004|E|1;Urmston|53.449|-2.354|E|1;Wokingham|51.411|-0.836|E|1;Swadlincote|52.774|-1.557|E|1;Trowbridge|51.319|-2.209|E|1;Prescot|53.429|-2.8|E|1;Bexhill-on-Sea|50.85|0.471|E|1;Bloxwich|52.618|-2.004|E|1;North Shields|55.016|-1.449|E|1;Glenrothes|56.195|-3.173|S|1;Skelmersdale|53.55|-2.773|E|1;Fleet|51.283|-0.833|E|1;Abingdon|51.671|-1.283|E|1;Tonbridge|51.195|0.274|E|1;Ramsgate|51.336|1.418|E|1;Ilkeston|52.971|-1.31|E|1;Coalville|52.722|-1.37|E|1;Canvey Island|51.522|0.581|E|1;Surbiton|51.391|-0.298|E|1;Whitley Bay|55.04|-1.447|E|1;Greenford|51.529|-0.355|E|1;Arnold|53|-1.133|E|1;Houghton-Le-Spring|54.84|-1.464|E|1;Bishops Stortford|51.871|0.159|E|1;Leyland|53.698|-2.688|E|1;Rushden|52.289|-0.602|E|1;Leighton Buzzard|51.917|-0.658|E|1;Yeadon|53.864|-1.687|E|1;Blyth|55.127|-1.509|E|1;Eccles|53.483|-2.333|E|1;Redcar|54.617|-1.06|E|1;Airdrie|55.866|-3.98|S|1;Peterlee|54.76|-1.336|E|1;Farnham|51.214|-0.801|E|1;Chester-le-Street|54.859|-1.574|E|1;Great Malvern|52.112|-2.325|E|1;Herne Bay|51.373|1.129|E|1;Wilmslow|53.328|-2.231|E|1;Newton Abbot|50.529|-3.612|E|1;Stirling|56.119|-3.937|S|1;Mangotsfield|51.488|-2.504|E|1;Billericay|51.629|0.42|E|1;Chipping Sodbury|51.538|-2.394|E|1;Hitchin|51.949|-0.285|E|1;Walkden|53.517|-2.4|E|1;Tyldesley|53.514|-2.468|E|1;Chippenham|51.46|-2.125|E|1;Billingham|54.589|-1.29|E|1;Pontypool|51.701|-3.044|W|1;Accrington|53.754|-2.359|E|1;Falkirk|56.002|-3.785|S|1;Briton Ferry|51.631|-3.819|W|1;Hoddesdon|51.761|-0.011|E|1;Bridlington|54.083|-0.192|E|1;Bentley|53.533|-1.15|E|1;Exmouth|50.617|-3.402|E|1;Yate|51.541|-2.418|E|1;Felling|54.953|-1.572|E|1;Colwyn Bay|53.295|-3.727|W|1;Radcliffe|53.562|-2.325|E|1;Totton|50.919|-1.49|E|1;Chorley|53.65|-2.617|E|1;Bicester|51.9|-1.154|E|1;Haywards Heath|50.998|-0.103|E|1;Irvine|55.619|-4.655|S|1;Wigston Magna|52.581|-1.092|E|1;Wednesfield|52.596|-2.085|E|1;Windsor|51.483|-0.6|E|1;Dumfries|55.07|-3.611|S|1;Glossop|53.443|-1.949|E|1;Cramlington|55.087|-1.586|E|1;Pudsey|53.795|-1.661|E|1;Ebbw Vale|51.777|-3.208|W|1;Newbury|51.401|-1.325|E|1;Wickford|51.611|0.523|E|1;Lichfield|52.682|-1.825|E|1;Brighouse|53.703|-1.784|E|1;Darwen|53.698|-2.465|E|1;Wisbech|52.666|0.159|E|1;Borehamwood|51.655|-0.278|E|1;Prestwich|53.533|-2.283|E|1;Motherwell|55.789|-3.992|S|1;Cleethorpes|53.56|-0.032|E|1;Lower Earley|51.427|-0.92|E|1;Falmouth|50.154|-5.071|E|1;Hyde|53.451|-2.079|E|1;Chichester|50.837|-0.78|E|1;Barnstaple|51.08|-4.058|E|1;Spalding|52.787|-0.151|E|1;Rutherglen|55.829|-4.214|S|1;Aberdare|51.714|-3.449|W|1;Caerphilly|51.575|-3.218|W|1;Ruislip|51.573|-0.423|E|1;Saint Neots|52.217|-0.267|E|1;Burgess Hill|50.958|-0.133|E|1;Beverley|53.846|-0.423|E|1;Deal|51.223|1.404|E|1;Wishaw|55.767|-3.917|S|1;Pontypridd|51.602|-3.342|W|1;Winsford|53.191|-2.524|E|1;Harpenden|51.817|-0.357|E|1;Rayleigh|51.586|0.605|E|1;Whitstable|51.361|1.026|E|1;Camberley|51.337|-0.743|E|1;Barnet|51.65|-0.2|E|1;Bedworth|52.479|-1.469|E|1;Heswall|53.327|-3.096|E|1;Hucknall|53.033|-1.2|E|1;Egham|51.432|-0.552|E|1;Sevenoaks|51.273|0.189|E|1;Kidsgrove|53.087|-2.238|E|1;Newtownards|54.592|-5.691|N|1;Didcot|51.609|-1.242|E|1;Nelson|53.833|-2.2|E|1;Burntwood|52.681|-1.928|E|1;Carrickfergus|54.716|-5.806|N|1;Felixstowe|51.964|1.351|E|1;Kendal|54.327|-2.748|E|1;Consett|54.854|-1.832|E|1;Witney|51.784|-1.485|E|1;Ashton in Makerfield|53.483|-2.65|E|1;Cheadle Hulme|53.376|-2.19|E|1;Ballymena|54.864|-6.276|N|1;Stanford-le-Hope|51.523|0.434|E|1;Bideford|51.017|-4.208|E|1;Rochester|51.388|0.505|E|1;Shipley|53.833|-1.767|E|1;Brierley Hill|52.482|-2.121|E|1;Stratford-upon-Avon|52.192|-1.707|E|1;Sunbury-on-Thames|51.404|-0.418|E|1;Newry|54.178|-6.337|N|1;Ashington|55.177|-1.564|E|1;Cambuslang|55.81|-4.161|S|1;Kirkby in Ashfield|53.1|-1.244|E|1;Willenhall|52.585|-2.059|E|1;Burngreave|53.393|-1.458|E|1;Denton|53.457|-2.118|E|1;Cleckheaton|53.724|-1.713|E|1;Ashford|51.432|-0.458|E|1;Bearsden|55.915|-4.333|S|1;Jarrow|54.98|-1.484|E|1;Melton Mowbray|52.766|-0.887|E|1;Workington|54.642|-3.544|E|1;Epsom|51.331|-0.27|E|1;Haverhill|52.082|0.439|E|1;Maghull|53.516|-2.941|E|1;Clydebank|55.901|-4.406|S|1;East Grinstead|51.124|-0.006|E|1;Flint|53.245|-3.132|W|1;Westhoughton|53.549|-2.525|E|1;Frome|51.228|-2.322|E|1;Congleton|53.163|-2.213|E|1;Camden Town|51.541|-0.143|E|1;Ryde|50.73|-1.162|E|1;Bishop Auckland|54.656|-1.677|E|1;Northolt|51.549|-0.368|E|1;Newton Aycliffe|54.618|-1.572|E|1;Rhyl|53.319|-3.492|W|1;Hertford|51.796|-0.079|E|1;Staveley|53.267|-1.35|E|1;Coleraine|55.133|-6.667|N|1;Farnworth|53.55|-2.4|E|1;Crowthorne|51.37|-0.792|E|1;Hawarden|53.185|-3.026|W|1;Bramhall|53.358|-2.165|E|1;Coulsdon|51.32|-0.141|E|1;Bartley Green|52.435|-1.997|E|1;St Austell|50.343|-4.774|E|1;Rhosllanerchrugog|53.01|-3.058|W|1;Fleetwood|53.925|-3.011|E|1;Witham|51.8|0.64|E|1;Blackheath|51.465|0.008|E|1;Pitsea|51.564|0.509|E|1;Whitehaven|54.549|-3.584|E|1;Newport|50.701|-1.291|E|1;Skegness|53.144|0.336|E|1;Selby|53.783|-1.067|E|1;Thetford|52.417|0.75|E|1;Newton Mearns|55.773|-4.333|S|1;Vale of Leven|55.971|-4.579|S|1;Wednesbury|52.551|-2.024|E|1;Feltham|51.446|-0.414|E|1;Thatcham|51.404|-1.26|E|1;Hindley|53.533|-2.583|E|1;Plymstock|50.36|-4.09|E|1;Ormskirk|53.567|-2.882|E|1;Warwick|52.283|-1.583|E|1;Rugeley|52.759|-1.937|E|1;Golborne|53.477|-2.597|E|1;Gosforth|55|-1.617|E|1;Huntingdon|52.33|-0.187|E|1;Daventry|52.257|-1.161|E|1;Droitwich|52.267|-2.15|E|1;New Milton|50.756|-1.666|E|1;Ammanford|51.793|-3.988|W|1;Portishead|51.482|-2.77|E|1;Droylsden|53.48|-2.145|E|1;Arbroath|56.563|-2.587|S|1;Musselburgh|55.942|-3.05|S|1;Evesham|52.092|-1.949|E|1;Whitefield|53.55|-2.3|E|1;Lofthouse|53.729|-1.497|E|1;Penarth|51.439|-3.173|W|1;Bishopbriggs|55.907|-4.219|S|1;Belper|53.023|-1.481|E|1;Formby|53.558|-3.07|E|1;Burnham-on-Sea|51.239|-2.998|E|1;Broadstairs|51.359|1.439|E|1;Oadby|52.606|-1.084|E|1;Heanor|53.014|-1.354|E|1;Chapeltown|53.465|-1.472|E|1;Truro|50.265|-5.054|E|1;Elgin|57.649|-3.318|S|1;Litherland|53.47|-2.998|E|1;Market Harborough|52.478|-0.921|E|1;Royton|53.565|-2.123|E|1;Walton-on-Thames|51.387|-0.413|E|1;Wellington|52.7|-2.517|E|1;Woodford Green|51.609|0.023|E|1;Stalybridge|53.484|-2.059|E|1;Godalming|51.186|-0.615|E|1;Potters Bar|51.694|-0.178|E|1;Seaford|50.771|0.103|E|1;Alfreton|53.098|-1.384|E|1;Camborne|50.213|-5.297|E|1;Kenilworth|52.35|-1.583|E|1;Seaham|54.839|-1.346|E|1;Thornaby-on-Tees|54.533|-1.3|E|1;Sudbury|52.039|0.731|E|1;Rawtenstall|53.701|-2.284|E|1;Retford|53.322|-0.943|E|1;Renfrew|55.872|-4.393|S|1;Portadown|54.423|-6.444|N|1;Berkhamsted|51.76|-0.565|E|1;Stanley|54.868|-1.698|E|1;Swanley|51.397|0.173|E|1;Newton-le-Willows|53.45|-2.6|E|1;Rottingdean|50.81|-0.059|E|1;Amersham|51.667|-0.617|E|1;Hadley Wood|51.667|-0.17|E|1;Ossett|53.68|-1.58|E|1;Maldon|51.731|0.675|E|1;Buxton|53.257|-1.91|E|1;Horley|51.174|-0.159|E|1;Cowes|50.763|-1.298|E|1;Dronfield|53.302|-1.475|E|1;Ripley|53.033|-1.4|E|1;Bathgate|55.902|-3.644|S|1;Omagh|54.6|-7.3|N|1;March|52.551|0.088|E|1;Stowmarket|52.189|0.998|E|1;Clevedon|51.442|-2.858|E|1;Maesteg|51.609|-3.658|W|1;Guiseley|53.876|-1.712|E|1;Bordon|51.114|-0.862|E|1;Caterham|51.282|-0.079|E|1;Gainsborough|53.383|-0.767|E|1;Goole|53.703|-0.877|E|1;Harwich|51.942|1.284|E|1;East Dereham|52.683|0.933|E|1;Bellshill|55.817|-4.017|S|1;Chesham|51.7|-0.6|E|1;Gerrards Cross|51.586|-0.555|E|1;Crowborough|51.061|0.163|E|1;Stamford|52.65|-0.483|E|1;Stourport-on-Severn|52.34|-2.28|E|1;Gorseinon|51.669|-4.042|W|1;Failsworth|53.505|-2.166|E|1;Nailsea|51.432|-2.758|E|1;Isleworth|51.475|-0.342|E|1;Risca|51.608|-3.101|W|1;Alloa|56.116|-3.79|S|1;Newmarket|52.245|0.404|E|1;Bingley|53.849|-1.839|E|1;Brownhills|52.633|-1.933|E|1;Yateley|51.343|-0.83|E|1;Hythe|50.86|-1.402|E|1;Newquay|50.416|-5.073|E|1;Sandown|50.652|-1.161|E|1;Atherton|53.524|-2.494|E|1;Colne|53.857|-2.169|E|1;Chalfont Saint Peter|51.609|-0.556|E|1;Ampthill|52.027|-0.496|E|1;Swinton|53.5|-2.35|E|1;Portslade|50.843|-0.216|E|1;Kingswinford|52.498|-2.169|E|1;Chislehurst|51.417|0.069|E|1;Bowthorpe|52.639|1.219|E|1;Kempston Hardwick|52.09|-0.499|E|1;Hailsham|50.862|0.258|E|1;Dumbarton|55.944|-4.571|S|1;Poulton-le-Fylde|53.833|-2.983|E|1;Brough|53.729|-0.572|E|1;Leek|53.104|-2.022|E|1;Kempston|52.116|-0.5|E|1;Penzance|50.119|-5.537|E|1;Dinnington|53.367|-1.2|E|1;Faversham|51.315|0.889|E|1;Tewkesbury|51.992|-2.16|E|1;Antrim|54.7|-6.2|N|1;Kirkintilloch|55.939|-4.153|S|1;Earl Shilton|52.577|-1.315|E|1;Tiverton|50.902|-3.492|E|1;Adwick le Street|53.571|-1.185|E|1;Weybridge|51.372|-0.46|E|1;South Ockendon|51.508|0.283|E|1;Irlam|53.443|-2.423|E|1;Chessington|51.362|-0.304|E|1;Melksham|51.373|-2.14|E|1;Horsforth|53.843|-1.638|E|1;Clydach|51.683|-3.9|W|1;Dukinfield|53.475|-2.088|E|1;Great Wyrley|52.663|-2.011|E|1;Yarm|54.504|-1.358|E|1;Shoreham-by-Sea|50.834|-0.274|E|1;Pinner|51.594|-0.382|E|1;Ely|52.4|0.262|E|1;Hook|51.368|-0.306|E|1;South Elmsall|53.597|-1.28|E|1;Hebburn|54.973|-1.515|E|1;Mirfield|53.673|-1.696|E|1;Emsworth|50.848|-0.937|E|1;Aberystwyth|52.415|-4.083|W|1;Oswestry|52.862|-3.055|E|1;Prestatyn|53.337|-3.408|W|1;Horwich|53.601|-2.55|E|1;Lancing|50.829|-0.322|E|1;Rawmarsh|53.461|-1.344|E|1;Eastwood|53|-1.3|E|1;Peacehaven|50.793|-0.007|E|1;West Molesey|51.4|-0.38|E|1;East Molesey|51.399|-0.349|E|1;Wantage|51.588|-1.426|E|1;Uckfield|50.969|0.096|E|1;Peterhead|57.505|-1.784|S|1;Larne|54.85|-5.817|N|1;Mansfield Woodhouse|53.165|-1.194|E|1;Grove|51.61|-1.422|E|1;Hadleigh|51.553|0.61|E|1;Marlow|51.569|-0.774|E|1;Marple|53.395|-2.063|E|1;Chapel Allerton|53.829|-1.538|E|1;Brymbo|53.067|-3.067|W|1;Waltham Abbey|51.687|-0.004|E|1;Devizes|51.351|-1.994|E|1;Hampton|51.413|-0.367|E|1;Bangor|53.228|-4.129|W|1;Dalserf|55.733|-3.917|S|1;Hedge End|50.912|-1.301|E|1;Sandbach|53.145|-2.363|E|1;New Mills|53.366|-2|E|1;Ascot|51.411|-0.675|E|1;Abergele|53.284|-3.582|W|1;Spennymoor|54.699|-1.602|E|1;Dorking|51.232|-0.334|E|1;Ramsbottom|53.648|-2.317|E|1;Amersham on the Hill|51.675|-0.607|E|1;Moreton|53.4|-3.117|E|1;Biddulph|53.117|-2.176|E|1;Bishopstoke|50.966|-1.328|E|1;Ferndown|50.807|-1.9|E|1;Barrhead|55.799|-4.393|S|1;Ware|51.811|-0.029|E|1;Maltby|53.417|-1.2|E|1;Warminster|51.204|-2.179|E|1;Teignmouth|50.546|-3.497|E|1;Walton-on-the-Naze|51.848|1.267|E|1;Tynemouth|55.018|-1.426|E|1;Bushey|51.643|-0.361|E|1;Gelligaer|51.664|-3.256|W|1;Sleaford|52.998|-0.409|E|1;Haydock|53.467|-2.682|E|1;Mountsorrel|52.717|-1.15|E|1;Lewes|50.874|0.009|E|1;Thorne|53.611|-0.963|E|1;Grangemouth|56.011|-3.722|S|1;Calne|51.439|-2.006|E|1;Nantwich|53.069|-2.521|E|1;Wath upon Dearne|53.503|-1.346|E|1;Romsey|50.989|-1.5|E|1;Cirencester|51.719|-1.971|E|1;Blantyre|55.796|-4.095|S|1;Heysham|54.044|-2.893|E|1;Westbury|51.26|-2.188|E|1;Guisborough|54.535|-1.056|E|1;Bedlington|55.131|-1.593|E|1;Frinton-on-Sea|51.831|1.244|E|1;Dorchester|50.717|-2.433|E|1;Northallerton|54.339|-1.432|E|1;Longfield|51.397|0.302|E|1;Saint Andrews|56.339|-2.799|S|1;Rochford|51.582|0.707|E|1;High Blantyre|55.784|-4.1|S|1;Cobham|51.33|-0.411|E|1;Brixham|50.394|-3.516|E|1;Whickham|54.946|-1.676|E|1;Alton|51.149|-0.975|E|1;Biggleswade|52.087|-0.265|E|1;Cowley|51.732|-1.206|E|1;Harringay|51.582|-0.1|E|1;Lymington|50.758|-1.544|E|1;Kilwinning|55.653|-4.707|S|1;Louth|53.367|-0.004|E|1;Johnstone|55.829|-4.516|S|1;Carterton|51.759|-1.594|E|1;Ripon|54.136|-1.528|E|1;Bonnyrigg|55.873|-3.105|S|1;Hartley|51.387|0.304|E|1;Banbridge|54.35|-6.283|N|1;Chepstow|51.641|-2.677|W|1;Penicuik|55.831|-3.226|S|1;Ryton|52.617|-2.35|E|1;Worcester Park|51.38|-0.244|E|1;Viewpark|55.827|-4.057|S|1;Aldridge|52.605|-1.917|E|1;Basford|52.967|-1.183|E|1;Kippax|53.767|-1.371|E|1;Conisbrough|53.482|-1.232|E|1;Carmarthen|51.856|-4.305|W|1;Hoyland Nether|53.5|-1.45|E|1;Tadley|51.35|-1.129|E|1;Kidlington|51.822|-1.289|E|1;Royston|52.048|-0.024|E|1;Bebington|53.35|-3.017|E|1;Swanscombe|51.447|0.31|E|1;Baildon|53.847|-1.788|E|1;Porthcawl|51.479|-3.704|W|1;Keynsham|51.414|-2.498|E|1;Elland|53.685|-1.839|E|1;Saltash|50.41|-4.225|E|1;Earlsfield|51.444|-0.185|E|1;Erskine|55.901|-4.45|S|1;Wombwell|53.522|-1.397|E|1;South Hayling|50.788|-0.977|E|1;Blackwood|51.668|-3.208|W|1;Llandudno|53.325|-3.831|W|1;Broxburn|55.934|-3.471|S|1;Neston|51.412|-2.201|E|1;Hale|53.378|-2.333|E|1;Hazel Grove|53.383|-2.117|E|1;Darton|53.587|-1.527|E|1;Orpington|51.375|0.098|E|1;Saffron Walden|52.023|0.242|E|1;Haslingden|53.703|-2.324|E|1;Port Glasgow|55.935|-4.689|S|1;Penrith|54.666|-2.758|E|1;Sinfin|52.882|-1.487|E|1;Bredbury|53.417|-2.117|E|1;Mexborough|53.494|-1.292|E|1;Newport Pagnell|52.087|-0.722|E|1;Neston|53.283|-3.05|E|1;Larkhall|55.733|-3.967|S|1;Cleveleys|53.877|-3.04|E|1;Dursley|51.681|-2.353|E|1;Addlestone|51.371|-0.494|E|1;Petersfield|51.005|-0.934|E|1;Blaydon-on-Tyne|54.965|-1.714|E|1;Matlock|53.138|-1.556|E|1;Brynmawr|51.8|-3.183|W|1;Bo\u2019ness|56.017|-3.617|S|1;Corsham|51.434|-2.184|E|1;Wimborne Minster|50.783|-1.983|E|1;Tredegar|51.773|-3.247|W|1;Bromborough|53.349|-2.979|E|1;Garforth|53.792|-1.381|E|1;Hadley|52.7|-2.483|E|1;Ilkley|53.924|-1.823|E|1;Armagh|54.35|-6.667|N|1;Clitheroe|53.867|-2.4|E|1;Prestwick|55.483|-4.617|S|1;Knaresborough|54.009|-1.469|E|1;Troon|55.544|-4.663|S|1;Thornton Heath|51.399|-0.099|E|1;Otley|53.906|-1.694|E|1;Abergavenny|51.821|-3.017|W|1;Skipton|53.961|-2.017|E|1;Bodmin|50.472|-4.724|E|1;Ingleby Greenhow|54.45|-1.107|E|1;Haverfordwest|51.802|-4.969|W|1;Clayton-le-Woods|53.697|-2.668|E|1;Enniskillen|54.346|-7.641|N|1;Prenton|53.368|-3.055|E|1;Llantrisant|51.54|-3.374|W|1;Morpeth|55.169|-1.689|E|1;Llantwit Major|51.411|-3.486|W|1;Mildenhall|52.344|0.511|E|1;Pinxton|53.091|-1.318|E|1;Poynton|53.35|-2.117|E|1;Didsbury|53.417|-2.231|E|1;West Wickham|51.367|-0.017|E|1;Stone|52.906|-2.154|E|1;Bishops Cleeve|51.947|-2.063|E|1;Strabane|54.824|-7.469|N|1;Featherstone|52.645|-2.093|E|1;Hythe|51.072|1.084|E|1;Ringwood|50.845|-1.789|E|1;Hawick|55.423|-2.787|S|1;Ryhope|54.871|-1.37|E|1;Dundonald|54.592|-5.798|N|1;Forfar|56.644|-2.89|S|1;Bourne|52.767|-0.383|E|1;Beccles|52.459|1.565|E|1;Littleborough|53.644|-2.096|E|1;Knottingley|53.708|-1.256|E|1;Beaconsfield|51.612|-0.647|E|1;Bridport|50.734|-2.758|E|1;Helensburgh|56.006|-4.726|S|1;Pyle|51.517|-3.7|W|1;Rosyth|56.037|-3.438|S|1;Haslemere|51.09|-0.708|E|1;Middlewich|53.193|-2.444|E|1;Milford Haven|51.713|-5.034|W|1;Market Deeping|52.677|-0.316|E|1;Wetherby|53.928|-1.387|E|1;Kirk Sandall|53.562|-1.069|E|1;Stoke Gifford|51.517|-2.541|E|1;Biggin Hill|51.313|0.034|E|1;Wombourn|52.533|-2.183|E|1;Shepshed|52.766|-1.29|E|1;Blacon|53.208|-2.925|E|1;Ashtead|51.309|-0.3|E|1;Oxted|51.257|-0.006|E|1;Bargoed|51.683|-3.233|W|1;Carluke|55.736|-3.83|S|1;Verwood|50.876|-1.87|E|1;Alsager|53.096|-2.306|E|1;Linlithgow|55.976|-3.604|S|1;Broxbourne|51.747|-0.019|E|1;Churchdown|51.877|-2.171|E|1;Berwick-Upon-Tweed|55.769|-2.005|E|1;Streetly|52.583|-1.883|E|1;Bolton upon Dearne|53.517|-1.317|E|1;Newhaven|50.797|0.055|E|1;Newhaven|53.14|-1.753|E|1;Whitby|54.488|-0.615|E|1;Rustington|50.81|-0.507|E|1;Knutsford|53.303|-2.375|E|1;Fraserburgh|57.687|-2.018|S|1;Mayfield|55.872|-3.039|S|1;Milngavie|55.941|-4.323|S|1;Holywood|54.639|-5.825|N|1;Hetton-Le-Hole|54.817|-1.45|E|1;Uttoxeter|52.898|-1.865|E|1;Driffield|54.006|-0.445|E|1;Chard|50.873|-2.966|E|1;Stocksbridge|53.482|-1.594|E|1;Milnrow|53.611|-2.113|E|1;Bacup|53.703|-2.201|E|1;Brackley|52.033|-1.15|E|1;Chelmsley Wood|52.478|-1.738|E|1;Broadfield|51.097|-0.207|E|1;Abbey Wood|51.487|0.107|E|1;Flitwick|52.003|-0.495|E|1;Limavady|55.05|-6.951|N|1;Cinderford|51.824|-2.499|E|1;Street|51.125|-2.74|E|1;Armthorpe|53.535|-1.053|E|1;Buckingham|52|-0.988|E|1;Nelson|51.653|-3.284|W|1;Smethwick|52.493|-1.967|E|1;Saltcoats|55.636|-4.786|S|1;Longton|52.983|-2.133|E|1;Inverurie|57.284|-2.377|S|1;Whittlesey|52.558|-0.13|E|1;Newport|52.767|-2.377|E|1;Frimley|51.317|-0.745|E|1;Hurstpierpoint|50.934|-0.18|E|1;Dalkeith|55.893|-3.068|S|1;Eaton Socon|52.218|-0.289|E|1;Portland|50.567|-2.445|E|1;Galashiels|55.615|-2.807|S|1;Bridgnorth|52.537|-2.42|E|1;Sidmouth|50.691|-3.24|E|1;Mablethorpe|53.341|0.261|E|1;Hartshill|52.548|-1.522|E|1;North Walsham|52.821|1.387|E|1;Brixton Hill|51.452|-0.123|E|1;Grange Hill|51.612|0.086|E|1;Ashby-de-la-Zouch|52.746|-1.473|E|1;Treharris|51.665|-3.307|W|1;Henlow|52.03|-0.286|E|1;Tavistock|50.549|-4.144|E|1;Helston|50.103|-5.27|E|1;West Drayton|51.5|-0.467|E|1;Prudhoe|54.962|-1.852|E|1;Giffnock|55.804|-4.295|S|1;Rickmansworth|51.639|-0.477|E|1;Purfleet|51.484|0.242|E|1;Minehead|51.205|-3.483|E|1;Sheerness|51.44|0.763|E|1;Dungannon|54.503|-6.767|N|1;Tring|51.795|-0.658|E|1;Chorleywood|51.655|-0.514|E|1;Kirkham|53.782|-2.872|E|1;Halstead|51.945|0.639|E|1;Cudworth|53.571|-1.416|E|1;Haxby|54.014|-1.071|E|1;Barnham|50.831|-0.638|E|1;Montrose|56.717|-2.467|S|1;Ivybridge|50.39|-3.919|E|1;Tranent|55.944|-2.954|S|1;Market Drayton|52.905|-2.49|E|1;Armadale|55.883|-3.7|S|1;Bolsover|53.228|-1.292|E|1;Cross Hills|53.906|-1.985|E|1;Tilbury|51.462|0.359|E|1;Charlton Kings|51.884|-2.042|E|1;Blandford Forum|50.861|-2.162|E|1;Todmorden|53.714|-2.097|E|1;Thornbury|51.609|-2.52|E|1;Codsall|52.63|-2.201|E|1;Sandy|52.129|-0.289|E|1;Liversedge|53.705|-1.693|E|1;Lymm|53.381|-2.478|E|1;Westhill|57.153|-2.28|S|1;Belsize Park|51.548|-0.172|E|1;Heckmondwike|53.706|-1.677|E|1;Syston|52.683|-1.067|E|1;Henley-on-Thames|51.533|-0.9|E|1;Honiton|50.8|-3.189|E|1;Great Harwood|53.785|-2.409|E|1;Cowdenbeath|56.112|-3.344|S|1;Holyhead|53.306|-4.632|W|1;Carnoustie|56.503|-2.705|S|1;Cheadle|52.983|-1.983|E|1;Hexham|54.97|-2.104|E|1;Caldicot|51.587|-2.757|W|1;Stonehaven|56.964|-2.212|S|1;Kingsteignton|50.55|-3.583|E|1;Newtown|52.517|-3.3|W|1;Ulverston|54.196|-3.096|E|1;Rastrick|53.692|-1.788|E|1;Wells|51.208|-2.649|E|1;Largs|55.796|-4.863|S|1;Padiham|53.802|-2.315|E|1;Thame|51.748|-0.976|E|1;Little Lever|53.563|-2.378|E|1;Dawlish|50.581|-3.466|E|1;Kimberley|52.983|-1.267|E|1;Royal Wootton Bassett|51.542|-1.905|E|1;Atherstone|52.575|-1.547|E|1;Mountain Ash|51.684|-3.38|W|1;Woodbridge|52.093|1.32|E|1;Ince-in-Makerfield|53.533|-2.617|E|1;Ilfracombe|51.209|-4.113|E|1;Methil|56.185|-3.022|S|1;Cranleigh|51.142|-0.484|E|1;Cookstown|54.643|-6.746|N|1;Barton upon Humber|53.689|-0.444|E|1;Featherstone|53.677|-1.356|E|1;Timperley|53.4|-2.333|E|1;Kesgrave|52.062|1.236|E|1;Great Bookham|51.279|-0.374|E|1;Penistone|53.526|-1.63|E|1;Abertillery|51.73|-3.134|W|1;Leominster|52.226|-2.745|E|1;Codicote|51.851|-0.237|E|1;Ardrossan|55.65|-4.807|S|1;Oakham|52.667|-0.733|E|1;Beighton|53.333|-1.333|E|1;Shirebrook|53.203|-1.213|E|1;Downham Market|52.607|0.384|E|1;Rainhill|53.416|-2.766|E|1;Oldbury|52.5|-2.017|E|1;Knowle|52.383|-1.733|E|1;Shefford|52.039|-0.334|E|1;Pelsall|52.629|-1.967|E|1;Immingham|53.614|-0.216|E|1;Brentford|51.486|-0.308|E|1;Buckhurst Hill|51.624|0.033|E|1;Diss|52.377|1.109|E|1;Desborough|52.442|-0.821|E|1;Harrow on the Hill|51.571|-0.334|E|1;Ross on Wye|51.917|-2.567|E|1;Gourock|55.962|-4.818|S|1;Chertsey|51.388|-0.508|E|1;Selsey|50.735|-0.79|E|1;Attleborough|52.518|1.016|E|1;Ludlow|52.374|-2.713|E|1;Stranraer|54.902|-5.027|S|1;Downpatrick|54.328|-5.715|N|1;Abbots Langley|51.706|-0.418|E|1;Whitburn|55.867|-3.683|S|1;Midsomer Norton|51.286|-2.486|E|1;Swanage|50.608|-1.957|E|1;Barnoldswick|53.917|-2.187|E|1;Annfield Plain|54.857|-1.738|E|1;Sidcup|51.426|0.104|E|1;Coleford|51.795|-2.614|E|1;Shepton Mallet|51.19|-2.547|E|1;Hedon|53.74|-0.197|E|1;Chigwell|51.62|0.076|E|1;Wallingford|51.6|-1.125|E|1;Chatteris|52.456|0.052|E|1;Epping|51.698|0.111|E|1;Brierfield|53.825|-2.234|E|1;Broadstone|50.757|-1.994|E|1;Yatton|51.388|-2.824|E|1;Cosham|50.847|-1.063|E|1;Horbury|53.661|-1.56|E|1;Ystalyfera|51.767|-3.781|W|1;Little Hulton|53.533|-2.417|E|1;Snodland|51.33|0.443|E|1;Ponteland|55.05|-1.745|E|1;Kearsley|53.533|-2.383|E|1;Boughton|53.2|-0.983|E|1;Abercarn|51.647|-3.135|W|1;Amesbury|51.175|-1.781|E|1;Monmouth|51.813|-2.714|W|1;Shepperton|51.395|-0.449|E|1;Ellon|57.364|-2.073|S|1;Baldock|51.988|-0.188|E|1;Aberkenfig|51.54|-3.596|W|1;Abram|53.509|-2.593|E|1;Mold|53.167|-3.141|W|1;Stenhousemuir|56.027|-3.815|S|1;Saint Leonards-on-Sea|50.856|0.545|E|1;Kingston upon Thames|51.413|-0.297|E|1;Waltham Cross|51.686|-0.036|E|1;Upminster|51.556|0.256|E|1;Glenfield|52.647|-1.195|E|1;Barnsbury|51.541|-0.117|E|1;Cockington|50.463|-3.557|E|1;Bradwell|52.574|1.7|E|1;Shildon|54.63|-1.643|E|0;St Ives|50.209|-5.487|E|0;Thirsk|54.233|-1.344|E|0;Sowerby Bridge|53.709|-1.909|E|0;Mossley|53.515|-2.035|E|0;Watton|52.567|0.833|E|0;Lutterworth|52.456|-1.202|E|0;Forres|57.61|-3.621|S|0;Nairn|57.581|-3.88|S|0;Kilsyth|55.976|-4.059|S|0;Soham|52.335|0.337|E|0;Edgware|51.613|-0.275|E|0;Greasby|53.373|-3.123|E|0;Birchington-on-Sea|51.376|1.305|E|0;Attleborough|52.513|-1.455|E|0;Erith|51.483|0.175|E|0;Dalgety Bay|56.035|-3.35|S|0;Ferryhill|54.683|-1.55|E|0;Westergate|50.84|-0.671|E|0;Warsop|53.214|-1.151|E|0;Pembroke Dock|51.692|-4.94|W|0;Caernarfon|53.141|-4.27|W|0;Kirby Muxloe|52.63|-1.228|E|0;Whitchurch|52.967|-2.683|E|0;New Romney|50.986|0.941|E|0;Polesworth|52.62|-1.61|E|0;Stakeford|55.161|-1.575|E|0;Steyning|50.887|-0.328|E|0;Killamarsh|53.324|-1.317|E|0;Ballymoney|55.071|-6.51|N|0;Teddington|51.422|-0.331|E|0;Parkstone|50.73|-1.945|E|0;Royston|53.6|-1.45|E|0;Wivenhoe|51.856|0.958|E|0;Brandon|54.75|-1.617|E|0;Maryport|54.714|-3.495|E|0;Larbert|56.022|-3.829|S|0;Garstang|53.901|-2.774|E|0;Braunton|51.108|-4.161|E|0;Sherborne|50.946|-2.518|E|0;Bulford|51.189|-1.76|E|0;Crook|54.713|-1.75|E|0;Prestonpans|55.959|-2.98|S|0;Ballyclare|54.751|-5.999|N|0;Scalby|53.767|-0.717|E|0;Par|50.351|-4.703|E|0;Clarkston|55.786|-4.277|S|0;Deganwy|53.304|-3.827|W|0;Grappenhall|53.372|-2.547|E|0;Seaton Delaval|55.072|-1.526|E|0;Hunstanton|52.95|0.5|E|0;Greenhill|51.583|-0.339|E|0;Tonyrefail|51.584|-3.43|W|0;Shortlands|51.399|0.004|E|0;Stevenston|55.64|-4.753|S|0;Bradford-on-Avon|51.348|-2.251|E|0;Cupar|56.319|-3.012|S|0;Hemsworth|53.613|-1.354|E|0;Liskeard|50.455|-4.465|E|0;Comber|54.549|-5.744|N|0;Tiptree|51.812|0.745|E|0;Bonhill|55.979|-4.564|S|0;Yaxley|52.518|-0.259|E|0;Tidworth|51.231|-1.663|E|0;Pencoed|51.524|-3.5|W|0;Magherafelt|54.754|-6.607|N|0;Cockermouth|54.662|-3.361|E|0;Bingham|52.95|-0.959|E|0;Calcot|51.441|-1.051|E|0;Bewbush|51.103|-0.223|E|0;Pontarddulais|51.714|-4.039|W|0;Towcester|52.134|-0.991|E|0;Farnborough|51.359|0.069|E|0;Frodsham|53.295|-2.727|E|0;Haddington|55.956|-2.783|S|0;Market Warsop|53.205|-1.153|E|0;Coppull|53.625|-2.659|E|0;Chasetown|52.672|-1.925|E|0;Wideopen|55.045|-1.622|E|0;Queensferry|55.991|-3.398|S|0;Leven|56.2|-3|S|0;Broughton Astley|52.528|-1.218|E|0;Cumnock|55.454|-4.266|S|0;Annan|54.988|-3.256|S|0;Queensbury|53.767|-1.849|E|0;Launceston|50.637|-4.36|E|0;Caister-on-Sea|52.648|1.726|E|0;Plympton|50.391|-4.06|E|0;Lanark|55.674|-3.782|S|0;Blairgowrie|56.592|-3.34|S|0;Longdendale|53.467|-2|E|0;Ledbury|52.036|-2.426|E|0;Dunblane|56.188|-3.964|S|0;Gillingham|51.038|-2.276|E|0;Cromer|52.931|1.299|E|0;Burscough|53.596|-2.84|E|0;Lydney|51.726|-2.526|E|0;Cowplain|50.894|-1.018|E|0;Caerleon|51.61|-2.954|W|0;Tullibody|56.134|-3.838|S|0;Kiveton Park|53.341|-1.255|E|0;Southwater|51.024|-0.352|E|0;Raunds|52.344|-0.537|E|0;Knaphill|51.32|-0.616|E|0;Storrington|50.918|-0.455|E|0;Linwood|55.848|-4.493|S|0;Carcroft|53.583|-1.176|E|0;Tarleton|53.68|-2.83|E|0;Lenzie|55.928|-4.154|S|0;Bewdley|52.376|-2.318|E|0;Oban|56.415|-5.472|S|0;Rhymney|51.76|-3.286|W|0;Oakengates|52.695|-2.45|E|0;Denbigh|53.183|-3.417|W|0;Clayton le Moors|53.767|-2.383|E|0;Glastonbury|51.147|-2.721|E|0;Dunbar|56.001|-2.514|S|0;Brandon|52.384|-1.4|E|0;Hornsea|53.91|-0.168|E|0;Buckie|57.676|-2.962|S|0;Richmond|54.404|-1.734|E|0;Sawbridgeworth|51.817|0.15|E|0;Marlborough|51.42|-1.729|E|0;Portstewart|55.181|-6.714|N|0;Peebles|55.652|-3.189|S|0;Ashbourne|53.017|-1.733|E|0;New Basford|52.973|-1.166|E|0;Richmond|51.462|-0.306|E|0;Pocklington|53.933|-0.781|E|0;Burry Port|51.684|-4.247|W|0;Fakenham|52.83|0.848|E|0;Marske-by-the-Sea|54.591|-1.02|E|0;Brecon|51.946|-3.389|W|0;Darfield|53.534|-1.376|E|0;Bedwas|51.592|-3.199|W|0;Shotts|55.82|-3.797|S|0;Princes Risborough|51.725|-0.831|E|0;Humberston|53.53|-0.025|E|0;Monifieth|56.482|-2.817|S|0;Hayle|50.184|-5.421|E|0;Portlethen|57.069|-2.132|S|0;Cambourne|52.221|-0.07|E|0;Edenbridge|51.192|0.067|E|0;Radlett|51.686|-0.319|E|0;Dunoon|55.95|-4.927|S|0;Hadleigh|52.045|0.953|E|0;Beddau|51.554|-3.358|W|0;Alnwick|55.413|-1.706|E|0;Enderby|52.588|-1.206|E|0;Clayton West|53.595|-1.611|E|0;Treorchy|51.66|-3.506|W|0;Sheringham|52.941|1.209|E|0;Totnes|50.431|-3.684|E|0;Brightlingsea|51.812|1.023|E|0;Maidenbower|51.108|-0.153|E|0;Iver Heath|51.536|-0.518|E|0;Shanklin|50.626|-1.179|E|0;Freckleton|53.754|-2.865|E|0;Hawkinge|51.113|1.162|E|0;Aveley|51.5|0.252|E|0;Warlingham|51.31|-0.058|E|0;Adlington|53.613|-2.607|E|0;Chalfont St Giles|51.632|-0.57|E|0;Bircotes|53.419|-1.049|E|0;Littleport|52.458|0.306|E|0;Carnforth|54.132|-2.769|E|0;Holbeach|52.804|0.014|E|0;Silsden|53.914|-1.938|E|0;Eaglescliffe|54.525|-1.35|E|0;Hardingstone|52.214|-0.886|E|0;Partington|53.419|-2.428|E|0;Highworth|51.631|-1.711|E|0;Euxton|53.67|-2.676|E|0;Denny|56.023|-3.908|S|0;Paddock Wood|51.182|0.382|E|0;Meltham|53.593|-1.849|E|0;Crediton|50.783|-3.65|E|0;Ramsey|52.451|-0.109|E|0;Freshwater|50.684|-1.526|E|0;Dalton in Furness|54.158|-3.18|E|0;Crewkerne|50.883|-2.796|E|0;Easton|50.533|-2.45|E|0;Dorridge|52.373|-1.753|E|0;Cullompton|50.855|-3.393|E|0;Carryduff|54.518|-5.887|N|0;West Thurrock|51.478|0.277|E|0;Penkridge|52.726|-2.116|E|0;Windermere|54.381|-2.907|E|0;Thurso|58.593|-3.526|S|0;Great Dunmow|51.872|0.363|E|0;Dinas Powys|51.435|-3.214|W|0;Torpoint|50.375|-4.196|E|0;Tottington|53.613|-2.341|E|0;Wendover|51.762|-0.74|E|0;Rothwell|52.417|-0.8|E|0;Rainworth|53.119|-1.119|E|0;West Kirby|53.373|-3.184|E|0;Warrenpoint|54.101|-6.257|N|0;Northam|51.033|-4.217|E|0;Okehampton|50.738|-4.002|E|0;Colinton|55.907|-3.256|S|0;Pershore|52.112|-2.076|E|0;Lossiemouth|57.721|-3.283|S|0;Watton|53.933|-0.45|E|0;Wareham|50.688|-2.111|E|0;Histon|52.252|0.106|E|0;Clowne|53.274|-1.264|E|0;Burnham-on-Crouch|51.633|0.815|E|0;Pembroke|51.675|-4.913|W|0;Twyford|51.475|-0.86|E|0;Longridge|53.832|-2.6|E|0;Fazeley|52.614|-1.698|E|0;Kilbirnie|55.751|-4.688|S|0;Brechin|56.73|-2.657|S|0;Banchory|57.052|-2.488|S|0;Radcliffe on Trent|52.948|-1.039|E|0;Irthlingborough|52.327|-0.611|E|0;Stornoway|58.209|-6.386|S|0;Iver|51.5|-0.5|E|0;Stonehouse|51.75|-2.283|E|0;Strathaven|55.677|-4.067|S|0;Norton Canes|52.671|-1.963|E|0;Newcastle|54.218|-5.89|N|0;Crieff|56.373|-3.839|S|0;Glusburn|53.9|-2|E|0;North Ferriby|53.721|-0.505|E|0;Murton|54.818|-1.39|E|0;Sturry|51.301|1.122|E|0;Donaghadee|54.641|-5.536|N|0;Ushaw Moor|54.778|-1.647|E|0;Ferndale|51.661|-3.447|W|0;Penryn|50.168|-5.104|E|0;Hook|51.284|-0.96|E|0;Basford, Stoke-on-Trent|53.016|-2.212|E|0;Shaftesbury|51.005|-2.193|E|0;Sawston|52.121|0.169|E|0;Sileby|52.733|-1.108|E|0;Swaffham|52.648|0.686|E|0;Wardle|53.65|-2.133|E|0;Hirwaun|51.739|-3.51|W|0;Kings Langley|51.714|-0.45|E|0;Great Missenden|51.704|-0.708|E|0;Lee-on-the-Solent|50.802|-1.202|E|0;Cotgrave|52.909|-1.038|E|0;Easington|54.785|-1.359|E|0;Old Windsor|51.458|-0.587|E|0;Otford|51.313|0.19|E|0;Kirkwall|58.985|-2.959|S|0;Wick|58.439|-3.094|S|0;Stewarton|55.68|-4.514|S|0;Faringdon|51.656|-1.587|E|0;Tenterden|51.068|0.688|E|0;Thrapston|52.397|-0.539|E|0;Cove|57.1|-2.083|S|0;West Mersea|51.778|0.919|E|0;Lerwick|60.153|-1.144|S|0;Barnard Castle|54.541|-1.919|E|0;Bannockburn|56.09|-3.911|S|0;Balsall Common|52.392|-1.65|E|0;Duntocher|55.924|-4.415|S|0;Bollington|53.294|-2.11|E|0;Sacriston|54.818|-1.624|E|0;Bude|50.824|-4.541|E|0;Norton|54.133|-0.785|E|0;Langley Green|51.128|-0.198|E|0;Larkfield|51.301|0.449|E|0;Tadworth|51.292|-0.236|E|0;Bolton le Sands|54.096|-2.8|E|0;Holywell|53.275|-3.229|W|0;Old Harlow|51.784|0.134|E|0;Alexandria|55.994|-4.586|S|0;Alcester|52.217|-1.867|E|0;Pickering|54.25|-0.767|E|0;Cleator Moor|54.521|-3.516|E|0;Billingshurst|51.023|-0.454|E|0;Moodiesburn|55.915|-4.083|S|0;Bursledon|50.887|-1.316|E|0;Burton Latimer|52.364|-0.679|E|0;Kemsing|51.306|0.229|E|0;Calverton|53.037|-1.083|E|0;Stotfold|52.016|-0.232|E|0;North Baddesley|50.977|-1.445|E|0;Hassocks|50.928|-0.166|E|0;Horncastle|53.208|-0.117|E|0;Lightwater|51.348|-0.671|E|0;Brigg|53.552|-0.492|E|0;Chalford|51.726|-2.151|E|0;Southwell|53.078|-0.955|E|0;Furnace Green|51.107|-0.169|E|0;Keyworth|52.871|-1.09|E|0;Stepps|55.889|-4.152|S|0;Culcheth|53.451|-2.521|E|0;Victoria|51.75|-3.2|W|0;Brynna|51.538|-3.464|W|0;Portrush|55.196|-6.649|N|0;Danbury|51.716|0.582|E|0;Sherburn in Elmet|53.795|-1.247|E|0;North Berwick|56.058|-2.723|S|0;Girvan|55.243|-4.856|S|0;Willington|54.717|-1.7|E|0;Rishton|53.768|-2.414|E|0;Wadebridge|50.517|-4.836|E|0;Chapel en le Frith|53.324|-1.913|E|0;Send|51.289|-0.527|E|0;Westgate on Sea|51.382|1.337|E|0;Kelty|56.134|-3.387|S|0;Lochgelly|56.128|-3.31|S|0;Harefield|51.603|-0.485|E|0;Southam|52.253|-1.388|E|0;Waltham|53.517|-0.1|E|0;Chapelhall|55.843|-3.949|S|0;Skelton|53.725|-0.842|E|0;Skelton|54.561|-0.988|E|0;Filey|54.21|-0.289|E|0;Anstey|52.674|-1.188|E|0;Midhurst|50.986|-0.74|E|0;Newbridge|51.667|-3.133|W|0;Godmanchester|52.319|-0.175|E|0;Abertridwr|51.596|-3.268|W|0;Currie|55.896|-3.308|S|0;Benwell|54.973|-1.669|E|0;Leiston|52.206|1.578|E|0;Stainforth|53.6|-1.033|E|0;Tadcaster|53.883|-1.263|E|0;Newarthill|55.815|-3.937|S|0;Liphook|51.077|-0.803|E|0;Olney|52.153|-0.702|E|0;Wroughton|51.524|-1.796|E|0;Washingborough|53.224|-0.475|E|0;Kilkeel|54.062|-6.003|N|0;Witley|51.15|-0.648|E|0;Wingerworth|53.202|-1.434|E|0;Market Weighton|53.863|-0.665|E|0;Houston|55.869|-4.552|S|0;Castle Donington|52.843|-1.342|E|0;Heighington|53.212|-0.459|E|0;Bothwell|55.803|-4.068|S|0;Ruddington|52.893|-1.15|E|0;Stockton Heath|53.371|-2.574|E|0;Rainham|51.363|0.609|E|0;Countesthorpe|52.554|-1.145|E|0;Burntisland|56.059|-3.237|S|0;Loanhead|55.879|-3.159|S|0;Netley|50.876|-1.354|E|0;East Leake|52.83|-1.181|E|0;Gorebridge|55.846|-3.046|S|0;Narborough|52.567|-1.2|E|0;Malmesbury|51.582|-2.097|E|0;West Hallam|52.971|-1.358|E|0;Burwell|52.276|0.327|E|0;Newbiggin-by-the-Sea|55.185|-1.515|E|0;Blaby|52.576|-1.164|E|0;Bishops Waltham|50.956|-1.215|E|0;Peasedown Saint John|51.317|-2.424|E|0;Liss|51.043|-0.892|E|0;Shifnal|52.67|-2.372|E|0;Tunstall|53.058|-2.211|E|0;Higham Ferrers|52.306|-0.593|E|0;Egremont|54.479|-3.528|E|0;Milford|51.173|-0.65|E|0;Bowdon|53.376|-2.365|E|0;Haworth|53.829|-1.948|E|0;Studley|52.27|-1.892|E|0;Hindhead|51.114|-0.734|E|0;Farnham Royal|51.542|-0.616|E|0;Beith|55.749|-4.637|S|0;East Cowes|50.758|-1.288|E|0;Rhoose|51.388|-3.354|W|0;Kirriemuir|56.674|-3.003|S|0;Withernsea|53.731|0.032|E|0;Marchwood|50.89|-1.454|E|0;Rainford|53.502|-2.788|E|0;Pembury|51.143|0.322|E|0;Kingsbridge|50.285|-3.776|E|0;Denmead|50.904|-1.067|E|0;Stone|51.45|0.265|E|0;Stone|51|0.767|E|0;Rowlands Gill|54.919|-1.745|E|0;Chipping Ongar|51.704|0.245|E|0;Weaverham|53.26|-2.573|E|0;Fordingbridge|50.927|-1.79|E|0;Battle|50.917|0.484|E|0;Boston Spa|53.904|-1.345|E|0;Strensall|54.04|-1.035|E|0;Amble|55.333|-1.583|E|0;Aylsham|52.797|1.251|E|0;Wellesbourne Mountford|52.192|-1.61|E|0;Balerno|55.884|-3.34|S|0;Gossops Green|51.111|-0.217|E|0;Burley in Wharfedale|53.91|-1.758|E|0;St Leonards|50.831|-1.844|E|0;Abercynon|51.645|-3.327|W|0;Millom|54.211|-3.272|E|0;Ventnor|50.594|-1.207|E|0;Broughton|53.163|-2.993|W|0;Burwell|53.293|0.035|E|0;Locharbriggs|55.103|-3.584|S|0;Saltburn-by-the-Sea|54.582|-0.974|E|0;Wales|53.341|-1.282|E|0;Welshpool|52.66|-3.147|W|0;Crumlin|51.678|-3.135|W|0;Magor|51.579|-2.831|W|0;Brundall|52.624|1.435|E|0;Undy|51.575|-2.815|W|0;Cottenham|52.287|0.125|E|0;Billinge|53.498|-2.708|E|0;Gorleston-on-Sea|52.573|1.731|E|0;Upton|53.615|-1.287|E|0;Wem|52.858|-2.718|E|0;Dodworth|53.543|-1.528|E|0;East Horsley|51.274|-0.432|E|0;Thames Ditton|51.39|-0.339|E|0;Great Gonerby|52.935|-0.667|E|0;Hagley|52.426|-2.128|E|0;Wellesbourne|52.197|-1.591|E|0;Wigton|54.825|-3.161|E|0;Fort William|56.816|-5.112|S|0;Ilminster|50.927|-2.91|E|0;Benson|51.621|-1.11|E|0;Whitworth|53.656|-2.177|E|0;Waterbeach|52.266|0.191|E|0;Pontyclun|51.522|-3.391|W|0;Kibworth Harcourt|52.544|-0.995|E|0;Callington|50.501|-4.313|E|0;Axminster|50.783|-2.998|E|0;Ravenshead|53.087|-1.16|E|0;Ballingry|56.164|-3.328|S|0;Llanharan|51.538|-3.439|W|0;Borrowash|52.907|-1.384|E|0;Oundle|52.481|-0.467|E|0;Selkirk|55.547|-2.839|S|0;Dyce|57.205|-2.177|S|0;Coedpoeth|53.054|-3.062|W|0;Chipping Norton|51.941|-1.545|E|0;Great Torrington|50.953|-4.144|E|0;Newmains|55.785|-3.875|S|0;Hoylake|53.39|-3.181|E|0;Ballynahinch|54.402|-5.897|N|0;Alness|57.696|-4.255|S|0;Manningtree|51.945|1.061|E|0;Brynamman|51.8|-3.867|W|0;Elderslie|55.833|-4.486|S|0;Four Marks|51.107|-1.049|E|0;Cockenzie|55.968|-2.966|S|0;Bracebridge Heath|53.196|-0.534|E|0;Ibstock|52.686|-1.4|E|0;East Wittering|50.77|-0.874|E|0;Blaenavon|51.774|-3.085|W|0;Broseley|52.613|-2.483|E|0;Dromore|54.513|-7.459|N|0;Audley|53.05|-2.3|E|0;Ruskington|53.045|-0.387|E|0;Wotton-under-Edge|51.632|-2.345|E|0;Dunholme|53.301|-0.465|E|0;Ingatestone|51.67|0.384|E|0;Uddingston|55.82|-4.084|S|0;Dartmouth|50.352|-3.579|E|0;Holmes Chapel|53.201|-2.357|E|0;Kelso|55.598|-2.434|S|0;Arlesey|52.007|-0.266|E|0;Wheatley|51.747|-1.139|E|0;Askern|53.616|-1.152|E|0;Ballycastle|55.204|-6.243|N|0;Dalry|55.71|-4.722|S|0;Halesworth|52.346|1.503|E|0;Kilburn|53.006|-1.439|E|0;Colnbrook|51.484|-0.521|E|0;Wilsden|53.821|-1.86|E|0;Hemsby|52.697|1.692|E|0;Hethersett|52.598|1.174|E|0;Dingwall|57.595|-4.427|S|0;Holbeck|53.784|-1.568|E|0;Stonehouse|55.694|-3.988|S|0;Jordanstown|54.683|-5.9|N|0;West Kingsdown|51.343|0.261|E|0;Blackburn|55.867|-3.633|S|0;Chinnor|51.702|-0.912|E|0;Tetbury|51.639|-2.162|E|0;East Tilbury|51.481|0.417|E|0;Ruthin|53.114|-3.318|W|0;Yapton|50.821|-0.613|E|0;New Stevenston|55.817|-3.974|S|0;Shepley|53.583|-1.717|E|0;Lyneham|51.517|-1.967|E|0;Wincanton|51.057|-2.406|E|0;New Alresford|51.086|-1.17|E|0;Bagshot|51.361|-0.688|E|0;Stansted Mountfitchet|51.9|0.2|E|0;Pentre|51.654|-3.491|W|0;West Clandon|51.261|-0.503|E|0;Cookham|51.559|-0.708|E|0;Glyn-neath|51.748|-3.618|W|0;Creswell|53.263|-1.22|E|0;Coalisland|54.542|-6.702|N|0;Great Wakering|51.552|0.804|E|0;Nailsworth|51.694|-2.22|E|0;Brotton|54.567|-0.939|E|0;Polmont|55.99|-3.707|S|0;Earls Barton|52.266|-0.752|E|0;Randalstown|54.75|-6.3|N|0;Barrowford|53.846|-2.218|E|0;Hoo|51.42|0.563|E|0;Cranfield|52.069|-0.609|E|0;Preesall|53.918|-2.966|E|0;Pelton|54.873|-1.609|E|0;Barnt Green|52.359|-2.007|E|0;Shelley|53.6|-1.683|E|0;Whitburn|54.953|-1.369|E|0;Cwmafan|51.617|-3.762|W|0;Kelvedon|51.84|0.706|E|0;Bourne End|51.576|-0.713|E|0;Neilston|55.786|-4.426|S|0;Llandrindod Wells|52.242|-3.379|W|0;Cardigan|52.084|-4.662|W|0;Bovingdon|51.723|-0.537|E|0;Bonnybridge|56.002|-3.889|S|0;Radstock|51.289|-2.46|E|0;Appley Bridge|53.578|-2.721|E|0;Westhill|57.473|-4.149|S|0;Manston|50.95|-2.267|E|0;Crofton|53.656|-1.43|E|0;Long Ashton|51.43|-2.661|E|0;Sawtry|52.44|-0.284|E|0;Brixworth|52.329|-0.903|E|0;Inverkeithing|56.033|-3.396|S|0;Measham|52.706|-1.506|E|0;Cheddar|51.275|-2.777|E|0;Barrow upon Soar|52.752|-1.146|E|0;Shevington|53.572|-2.693|E|0;Edwinstowe|53.195|-1.064|E|0;Budleigh Salterton|50.63|-3.322|E|0;Helsby|53.274|-2.769|E|0;Tillicoultry|56.153|-3.74|S|0;Ryhill|53.622|-1.411|E|0;Crumlin|54.621|-6.214|N|0;Whaley Bridge|53.33|-1.983|E|0;Malton|54.137|-0.8|E|0;Wingate|54.732|-1.379|E|0;Poringland|52.568|1.35|E|0;Bungay|52.454|1.438|E|0;Redbourn|51.799|-0.396|E|0;Looe|50.358|-4.454|E|0;South Molton|51.017|-3.833|E|0;Hungerford|51.415|-1.516|E|0;Blackrod|53.592|-2.58|E|0;Holytown|55.82|-3.973|S|0;Bayston Hill|52.675|-2.762|E|0;Woburn Sands|52.016|-0.65|E|0;Greenisland|54.701|-5.875|N|0;Quorndon|52.745|-1.173|E|0;Abercanaid|51.724|-3.366|W|0;Turriff|57.538|-2.459|S|0;West Byfleet|51.338|-0.506|E|0;Staplehurst|51.161|0.552|E|0;Bidford-on-Avon|52.17|-1.86|E|0;Hengoed|51.651|-3.232|W|0;Wirksworth|53.082|-1.574|E|0;Shipston on Stour|52.061|-1.628|E|0;Faifley|55.929|-4.385|S|0;Gresford|53.085|-2.971|W|0;East Boldon|54.945|-1.428|E|0;Cradley Heath|52.472|-2.082|E|0;Bridge of Allan|56.154|-3.946|S|0;Bilston|52.566|-2.074|E|0;Copthorne|51.139|-0.117|E|0;Markfield|52.687|-1.275|E|0;Tickhill|53.432|-1.109|E|0;Barton-le-Clay|51.966|-0.427|E|0;Rusthall|51.136|0.229|E|0;Overcombe|50.635|-2.432|E|0;Menai Bridge|53.228|-4.169|W|0;Buntingford|51.946|-0.018|E|0;Oughtibridge|53.436|-1.539|E|0;Clerkenwell|51.524|-0.11|E|0;Datchet|51.484|-0.579|E|0;Cardenden|56.143|-3.257|S|0;Kinross|56.205|-3.421|S|0;Tankerton|51.364|1.049|E|0;Winterton|53.655|-0.599|E|0;Ottery St Mary|50.75|-3.267|E|0;Fleckney|52.535|-1.046|E|0;Shiremoor|55.035|-1.51|E|0;Castleside|54.834|-1.878|E|0;Paulton|51.305|-2.5|E|0;Potton|52.129|-0.216|E|0;Llangefni|53.256|-4.311|W|0;Brampton|52.32|-0.22|E|0;Bridge of Weir|55.856|-4.579|S|0;Old Kilpatrick|55.922|-4.456|S|0;Writtle|51.729|0.429|E|0;Scone|56.419|-3.405|S|0;Fauldhouse|55.827|-3.707|S|0;Bidford-on-avon|52.167|-1.857|E|0;Albrighton|52.636|-2.28|E|0;Essington|52.629|-2.058|E|0;Loftus|54.555|-0.895|E|0;Easton-in-Gordano|51.476|-2.7|E|0;Sonning Common|51.519|-0.978|E|0;Campbeltown|55.426|-5.608|S|0;Henfield|50.93|-0.271|E|0;Grange-over-Sands|54.185|-2.925|E|0;Rye|50.951|0.734|E|0;Market Rasen|53.388|-0.338|E|0;Menston|53.89|-1.744|E|0;West Kilbride|55.69|-4.858|S|0;Stokesley|54.47|-1.193|E|0;Whalley|53.822|-2.407|E|0;Maybole|55.355|-4.68|S|0;Kingswells|57.158|-2.224|S|0;Uppingham|52.588|-0.723|E|0;Keith|57.536|-2.948|S|0;Bethesda|53.181|-4.058|W|0;Bovey Tracey|50.593|-3.675|E|0;Coggeshall|51.871|0.685|E|0;Kinvere|52.45|-2.233|E|0;Huntly|57.447|-2.786|S|0;Alva|56.153|-3.805|S|0;Heacham|52.908|0.494|E|0;Lyme Regis|50.727|-2.935|E|0;Radyr|51.519|-3.258|W|0;East Calder|55.892|-3.464|S|0;Hope|53.117|-3.033|W|0;Kingskerswell|50.499|-3.582|E|0;Greenhithe|51.45|0.285|E|0;Brightons|55.98|-3.716|S|0;Tenby|51.673|-4.704|W|0;Galston|55.601|-4.382|S|0;Melbourn|52.081|0.015|E|0;Duffield|52.986|-1.489|E|0;Kintore|57.237|-2.345|S|0;Broughton|53.567|-0.55|E|0;Shrivenham|51.599|-1.655|E|0;Caergwrle|53.11|-3.038|W|0;Grimethorpe|53.577|-1.377|E|0;Bromham|52.145|-0.529|E|0;Ripponden|53.674|-1.942|E|0;Armitage|52.742|-1.883|E|0;Eynsham|51.781|-1.375|E|0;Eccleston|53.642|-2.722|E|0;Dersingham|52.845|0.503|E|0;Bishopton|55.91|-4.506|S|0;Long Sutton|51.22|-0.943|E|0;Auchterarder|56.296|-3.707|S|0;Highbridge|51.217|-2.983|E|0;Bedale|54.288|-1.592|E|0;Kennoway|56.211|-3.049|S|0;Sandwich|51.272|1.338|E|0;Little Clacton|51.826|1.142|E|0;Toddington|51.949|-0.533|E|0;Taibach|51.583|-3.767|W|0;Peterculter|57.099|-2.266|S|0;Clapham|52.161|-0.495|E|0;Cross Hands|51.793|-4.088|W|0;Aylesford|51.304|0.479|E|0;Winscombe|51.318|-2.832|E|0;Langley Park|54.8|-1.67|E|0;Rothesay|55.836|-5.055|S|0;Winchcombe|51.954|-1.964|E|0;Earby|53.915|-2.143|E|0;Salfords|51.204|-0.169|E|0;Needham Market|52.156|1.052|E|0;Linton|52.098|0.277|E|0;Martock|50.974|-2.767|E|0;Great Ayton|54.491|-1.136|E|0;Little Chalfont|51.668|-0.57|E|0;Hartley Wintney|51.304|-0.9|E|0;Claydon|52.107|1.111|E|0;Donnington|51.951|-1.721|E|0;Ratby|52.65|-1.241|E|0;Wootton|51.174|1.179|E|0;Harleston|52.403|1.297|E|0;Blidworth|53.098|-1.117|E|0;Sedgefield|54.653|-1.45|E|0;Cuxton|51.374|0.457|E|0;Long Stratton|52.488|1.235|E|0;Ludgershall|51.256|-1.622|E|0;Irchester|52.281|-0.645|E|0;Alderley Edge|53.304|-2.238|E|0;Winslow|51.943|-0.881|E|0;Melbourne|52.822|-1.425|E|0;Haddenham|51.773|-0.926|E|0;Kings Worthy|51.089|-1.298|E|0;Coningsby|53.106|-0.176|E|0;Lesmahagow|55.637|-3.887|S|0;Lakenheath|52.418|0.522|E|0;Cranbrook|51.097|0.536|E|0;Meopham|51.368|0.36|E|0;Easingwold|54.12|-1.194|E|0;Milford on Sea|50.726|-1.59|E|0;Wootton|52.095|-0.535|E|0;Borough Green|51.292|0.305|E|0;Buckhaven|56.171|-3.034|S|0;Woodhall Spa|53.152|-0.215|E|0;Cwmbach|51.706|-3.409|W|0;Kessingland|52.42|1.709|E|0;Wheathampstead|51.811|-0.294|E|0;Newent|51.934|-2.408|E|0;Fremington|51.07|-4.137|E|0;Finedon|52.339|-0.65|E|0;Crawley Down|51.121|-0.077|E|0;Lockerbie|55.123|-3.356|S|0;Pontycymer|51.611|-3.584|W|0;Cuffley|51.708|-0.112|E|0;Keswick|54.599|-3.133|E|0;Epworth|53.526|-0.824|E|0;Upwell|52.602|0.222|E|0;Dalbeattie|54.933|-3.823|S|0;Fitzwilliam|53.633|-1.377|E|0;Culloden|57.487|-4.141|S|0;Wimblington|52.509|0.084|E|0;Hebden Bridge|53.741|-2.013|E|0;Bramley|51.327|-1.059|E|0;Wootton|50.728|-1.235|E|0;West End|50.927|-1.333|E|0;Somerton|51.954|-1.276|E|0;Saxmundham|52.215|1.488|E|0;Aston Clinton|51.8|-0.725|E|0;Crowland|52.676|-0.168|E|0;Wargrave|51.501|-0.866|E|0;New Tredegar|51.721|-3.241|W|0;Stoke Poges|51.544|-0.589|E|0;Newport-on-Tay|56.439|-2.937|S|0;Steeton|53.883|-1.95|E|0;Windlesham|51.365|-0.655|E|0;Thornliebank|55.805|-4.317|S|0;Stanmore|51.617|-0.317|E|0;Kennington|51.167|0.885|E|0;Glanamman|51.8|-3.933|W|0;Horsford|52.702|1.24|E|0;Boroughbridge|54.09|-1.401|E|0;Knebworth|51.867|-0.184|E|0;Shenley|51.691|-0.281|E|0;Howden|53.746|-0.87|E|0;Mauchline|55.516|-4.379|S|0;Invergordon|57.689|-4.167|S|0;Daresbury|53.342|-2.635|E|0;Bromyard|52.19|-2.509|E|0;Bawtry|53.431|-1.019|E|0;Bramley|51.195|-0.559|E|0;Burton|53.267|-0.567|E|0;Moira|54.48|-6.228|N|0;Maghera|54.844|-6.671|N|0;Waddington|53.167|-0.533|E|0;Goring|51.523|-1.133|E|0;Church|53.752|-2.391|E|0;Pwllheli|52.89|-4.415|W|0;Saltford|51.401|-2.459|E|0;Castle Douglas|54.941|-3.928|S|0;Lennoxtown|55.973|-4.2|S|0;Stokenchurch|51.658|-0.897|E|0;Wadhurst|51.062|0.339|E|0;Gunnislake|50.524|-4.213|E|0;Tumble|51.784|-4.11|W|0;Bar Hill|52.249|0.029|E|0;Macduff|57.67|-2.497|S|0;Cricklade|51.641|-1.857|E|0;Sharlston|53.67|-1.413|E|0;Southminster|51.662|0.83|E|0;Banff|57.665|-2.53|S|0;Willingham|52.314|0.058|E|0;Chudleigh|50.605|-3.6|E|0;Newton Stewart|54.958|-4.483|S|0;Chirk|52.936|-3.057|W|0;Blaenau-Ffestiniog|52.995|-3.937|W|0;Brampton|54.95|-2.733|E|0;Pulborough|50.958|-0.513|E|0;Saxilby|53.267|-0.663|E|0;Llantwit Fardre|51.555|-3.332|W|0;Dickens Heath|52.386|-1.839|E|0;Claydon|52.148|-1.333|E|0;Kilmacolm|55.895|-4.626|S|0;Jedburgh|55.48|-2.552|S|0;Ingoldmells|53.194|0.334|E|0;Stalham|52.771|1.518|E|0;Hawkhurst|51.048|0.511|E|0;Keele|53.004|-2.287|E|0;Hatfield Peverel|51.776|0.595|E|0;Elmswell|52.236|0.912|E|0;Milton of Campsie|55.961|-4.165|S|0;Mytholmroyd|53.731|-1.983|E|0;Bakewell|53.213|-1.675|E|0;Hamble-le-Rice|50.86|-1.324|E|0;Crowle|53.608|-0.833|E|0;Lamesley|54.916|-1.609|E|0;Tayport|56.447|-2.88|S|0;Lingfield|51.177|-0.016|E|0;Pinchbeck|52.813|-0.163|E|0;Eaton Bray|51.877|-0.592|E|0;Parbold|53.591|-2.77|E|0;Rothley|52.709|-1.137|E|0;Madeley|53|-2.333|E|0;Marsden|53.6|-1.917|E|0;Lydd|50.951|0.907|E|0;Bowburn|54.739|-1.525|E|0;Sutton Bridge|52.77|0.185|E|0;South Cave|53.77|-0.601|E|0;Old Basing|51.267|-1.033|E|0;Conwy|53.281|-3.83|W|0;Hillsborough|54.463|-6.077|N|0;Gnosall|52.786|-2.255|E|0;Earls Colne|51.927|0.701|E|0;Silver End|51.847|0.624|E|0;Darvel|55.61|-4.281|S|0;Barlby|53.8|-1.041|E|0;Branston|53.195|-0.475|E|0;Marston Moretaine|52.064|-0.549|E|0;Tenbury Wells|52.311|-2.596|E|0;Whitwell|53.283|-1.217|E|0;Girton|52.233|0.083|E|0;Linthwaite|53.624|-1.85|E|0;Blackmoorfoot|53.614|-1.856|E|0;Kemnay|57.236|-2.444|S|0;Theydon Bois|51.674|0.098|E|0;Warboys|52.404|-0.079|E|0;Heckington|52.982|-0.299|E|0;Eglinton|55.017|-7.183|N|0;Deanshanger|52.05|-0.887|E|0;Sutton|52.388|0.119|E|0;Holt|52.906|1.089|E|0;Cowbridge|51.46|-3.442|W|0;Pangbourne|51.484|-1.085|E|0;Barton under Needwood|52.763|-1.724|E|0;Stoney Stanton|52.548|-1.279|E|0;Aylesham|51.225|1.202|E|0;Haltwhistle|54.971|-2.457|E|0;Wickham Bishops|51.778|0.668|E|0;Tibshelf|53.144|-1.341|E|0;Kirkburton|53.61|-1.703|E|0;Auchinleck|55.472|-4.293|S|0;Long Buckby|52.303|-1.081|E|0;Cairnryan|54.971|-5.02|S|0;Burton Joyce|52.988|-1.034|E|0;Llanbradach|51.606|-3.23|W|0;Burnopfield|54.906|-1.725|E|0;Kingsbury|52.561|-1.679|E|0;Addingham|53.945|-1.884|E|0;Horrabridge|50.508|-4.1|E|0;Cosby|52.551|-1.194|E|0;Newick|50.975|0.016|E|0;Fulbourn|52.183|0.22|E|0;Mayland|51.68|0.767|E|0;Bransgore|50.782|-1.738|E|0;Harthill|55.861|-3.752|S|0;Rhuddlan|53.292|-3.47|W|0;Neyland|51.71|-4.952|W|0;Forest Row|51.096|0.033|E|0;Sible Hedingham|51.978|0.593|E|0;Stratfield Mortimer|51.373|-1.035|E|0;Church Stretton|52.538|-2.801|E|0;Whitehead|54.754|-5.709|N|0;Holton le Clay|53.505|-0.063|E|0;Tain|57.812|-4.055|S|0;Bembridge|50.686|-1.083|E|0;Ellesmere|52.908|-2.898|E|0;Southwold|52.327|1.68|E|0;Marks Tey|51.876|0.764|E|0;Pitstone|51.828|-0.64|E|0;Copmanthorpe|53.914|-1.142|E|0;Hinchley Wood|51.375|-0.338|E|0;Settle|54.069|-2.277|E|0;Bishopston|51.578|-4.048|W|0;Culmore|55.05|-7.267|N|0;Dreghorn|55.608|-4.622|S|0;Llanfairfechan|53.258|-3.974|W|0;Pewsey|51.339|-1.765|E|0;Ahoghill|54.867|-6.367|N|0;Buckfastleigh|50.481|-3.779|E|0;Yelverton|50.493|-4.084|E|0;Topsham|50.686|-3.467|E|0;Metheringham|53.14|-0.404|E|0;Kegworth|52.835|-1.28|E|0;Spixworth|52.685|1.32|E|0;Kirkliston|55.954|-3.403|S|0;Watchet|51.182|-3.331|E|0;Kilbarchan|55.836|-4.554|S|0;Wilton|51.079|-1.862|E|0;Banks|53.683|-2.917|E|0;Hadston|55.294|-1.604|E|0;Puckeridge|51.89|0.013|E|0;Purton|51.589|-1.874|E|0;Penyffordd|53.148|-3.046|W|0;Loddon|52.533|1.482|E|0;Brockenhurst|50.819|-1.573|E|0;Queenborough|51.418|0.744|E|0;Aberfan|51.689|-3.342|W|0;Kirton|52.928|-0.06|E|0;Lanchester|54.821|-1.743|E|0;Alvechurch|52.352|-1.965|E|0;Hinton|51.49|-2.385|E|0;Stamford Bridge|53.989|-0.915|E|0;Finningley|53.487|-0.991|E|0;Somersham|52.383|0|E|0;Coxhoe|54.715|-1.504|E|0;Bilsthorpe|53.14|-1.034|E|0;Willingham|53.35|-0.683|E|0;Nether Poppleton|53.988|-1.151|E|0;Ynysybwl|51.639|-3.36|W|0;Sturminster Newton|50.927|-2.305|E|0;Cults|57.117|-2.167|S|0;Cuckfield|51.011|-0.141|E|0;Messingham|53.528|-0.654|E|0;Moreton in Marsh|51.99|-1.703|E|0;Hinton|52.168|-1.218|E|0;Wollaston|52.258|-0.67|E|0;Chapel Saint Leonards|53.217|0.317|E|0;King's Clipstone|53.177|-1.101|E|0;Llangollen|52.968|-3.171|W|0;Mid Calder|55.893|-3.48|S|0;Alford|53.259|0.176|E|0;Upper Poppleton|53.979|-1.152|E|0;Ottershaw|51.363|-0.528|E|0;Clackmannan|56.107|-3.751|S|0;Shirland|53.122|-1.405|E|0;Water Orton|52.516|-1.74|E|0;Spilsby|53.174|0.094|E|0;Nettleham|53.266|-0.489|E|0;Gilberdyke|53.753|-0.739|E|0;Eyemouth|55.871|-2.09|S|0;Standon|52.917|-2.283|E|0;Anstruther|56.223|-2.703|S|0;Fishguard|51.994|-4.976|W|0;Colden Common|50.995|-1.311|E|0;Martham|52.705|1.636|E|0;Overton|51.244|-1.262|E|0;Kirkcudbright|54.838|-4.049|S|0;Takeley|51.871|0.266|E|0;Glemsford|52.104|0.669|E|0;Bramhope|53.885|-1.616|E|0;Belmont|52.043|-2.742|E|0;Fortuneswell|50.56|-2.442|E|0;Bloxham|52.02|-1.373|E|0;Exminster|50.681|-3.497|E|0;Saundersfoot|51.709|-4.702|W|0;Burtonwood|53.429|-2.659|E|0;Willand|50.883|-3.367|E|0;Skellingthorpe|53.235|-0.619|E|0;Saint Asaph|53.258|-3.445|W|0;Bottesford|52.941|-0.801|E|0;Ashburton|50.516|-3.756|E|0;Prestbury|53.283|-2.15|E|0;Saintfield|54.46|-5.831|N|0;Llanrwst|53.14|-3.795|W|0;Outwell|52.609|0.233|E|0;Whyteleafe|51.308|-0.084|E|0;Mulbarton|52.559|1.233|E|0;Lytchett Matravers|50.758|-2.078|E|0;Snaith|53.691|-1.029|E|0;Westerham|51.266|0.069|E|0;Terrington St Clement|52.758|0.297|E|0;Bourton on the Water|51.886|-1.755|E|0;Arundel|50.854|-0.554|E|0;Pegswood|55.179|-1.645|E|0;Askam in Furness|54.187|-3.205|E|0;New Marske|54.578|-1.042|E|0;Gobowen|52.896|-3.037|E|0;Tangmere|50.851|-0.716|E|0;Dymchurch|51.025|0.994|E|0;Laceby|53.541|-0.168|E|0;Boreham|51.199|-2.166|E|0;Fernhill Heath|52.23|-2.197|E|0;Coundon|54.663|-1.627|E|0;Welwyn|51.833|-0.214|E|0;Law|55.75|-3.883|S|0;Gamlingay|52.156|-0.193|E|0;Little Paxton|52.25|-0.258|E|0;Boreham|51.76|0.541|E|0;Bishopthorpe|53.919|-1.099|E|0;Fairford|51.708|-1.781|E|0;Doddington|52.497|0.06|E|0;Castle Cary|51.09|-2.514|E|0;Oldmeldrum|57.335|-2.32|S|0;Busby|55.78|-4.277|S|0;Caol|56.837|-5.101|S|0;West Bergholt|51.912|0.85|E|0;Amlwch|53.41|-4.347|W|0;Perranporth|50.344|-5.156|E|0;Hallglen|55.986|-3.785|S|0;Maddiston|55.974|-3.699|S|0;Treeton|53.386|-1.352|E|0;Ashurst|50.932|-0.324|E|0;Pilsley|53.15|-1.367|E|0;Desford|52.626|-1.294|E|0;Holywell Green|53.674|-1.867|E|0;Keady|54.25|-6.7|N|0;Saint Columb Major|50.432|-4.943|E|0;Drongan|55.435|-4.456|S|0;Ringmer|50.893|0.055|E|0;Odiham|51.254|-0.939|E|0;Kingsclere|51.325|-1.243|E|0;Hemingford Grey|52.318|-0.1|E|0;Disley|53.359|-2.038|E|0;Catterick|54.375|-1.633|E|0;Pevensey|50.82|0.34|E|0;Eaglesham|55.741|-4.275|S|0;Aviemore|57.196|-3.826|S|0;North Petherton|51.092|-3.015|E|0;Sherburn|54.776|-1.505|E|0;Boxgrove|50.859|-0.714|E|0;Highley|52.449|-2.383|E|0;Hunmanby|54.18|-0.32|E|0;Tandragee|54.355|-6.414|N|0;Callander|56.244|-4.216|S|0;Caddington|51.866|-0.457|E|0;Llanfairpwllgwyngyll|53.221|-4.203|W|0;West Calder|55.852|-3.57|S|0;Tywyn|52.586|-4.093|W|0;Chopwell|54.918|-1.82|E|0;Ruabon|52.988|-3.039|W|0;Langford|52.055|-0.272|E|0;Hoveton|52.715|1.411|E|0;Swillington|53.768|-1.417|E|0;Penparcau|52.403|-4.074|W|0;Iwade|51.378|0.729|E|0;Framlingham|52.221|1.342|E|0;Cholsey|51.573|-1.154|E|0;Congresbury|51.371|-2.81|E|0;Lambourn|51.508|-1.531|E|0;Dungiven|54.933|-6.917|N|0;South Petherton|50.948|-2.807|E|0;Langport|51.038|-2.828|E|0;Trafford Park|53.469|-2.312|E|0;Inverkip|55.908|-4.871|S|0;Porthleven|50.086|-5.315|E|0;Briston|52.854|1.059|E|0;Birdwell|53.514|-1.479|E|0;Marshfield|51.534|-3.073|W|0;Leslie|56.2|-3.217|S|0;Appleby-in-Westmorland|54.577|-2.49|E|0;Bream|51.748|-2.577|E|0;Denby Dale|53.572|-1.659|E|0;Charvil|51.476|-0.886|E|0;Newtonhill|57.033|-2.15|S|0;Innerleithen|55.619|-3.063|S|0;Gretna|54.994|-3.066|S|0;Carronshore|56.031|-3.783|S|0;Blackwell|53.117|-1.333|E|0;Llanharry|51.514|-3.432|W|0;Collingham|53.912|-1.412|E|0;St Mary's Bay|51.01|0.977|E|0;Eton|51.488|-0.609|E|0;Leysdown-on-Sea|51.397|0.922|E|0;Rendlesham|52.127|1.415|E|0;Long Lawford|52.382|-1.307|E|0;Knighton|52.343|-3.047|W|0;Choppington|55.15|-1.603|E|0;Cleland|55.802|-3.914|S|0;Steynton|51.729|-5.017|W|0;Bradley Cross|51.275|-2.763|E|0";
+let _ukTowns = null;
+function ukTowns() {
+  if (_ukTowns) return _ukTowns;
+  _ukTowns = UK_TOWNS_DATA.split(";").map(r => {
+    const [name, lat, lng, nation, big] = r.split("|");
+    return { name, lat: Number(lat), lng: Number(lng), nation, big: big === "1" };
+  });
+  return _ukTowns;
+}
+const NATION_NAMES = { E: "England", W: "Wales", S: "Scotland", N: "Northern Ireland" };
+
+// Names people actually search for, where GeoNames uses the formal one.
+const TOWN_SHORT_NAMES = {
+  "Kingston upon Hull": "Hull",
+  "Newcastle upon Tyne": "Newcastle",
+};
+const TOWN_ALIASES = { hull: "Kingston upon Hull", newcastle: "Newcastle upon Tyne", stoke: "Stoke-on-Trent" };
+function townDisplayName(t) {
+  const n = typeof t === "string" ? t : t && t.name;
+  return TOWN_SHORT_NAMES[n] || n || "";
+}
+
+// A fixed list, not a population ranking (see UK_TOWNS_DATA). These are the
+// cities a UK-wide business is most likely to want a page for.
+const MAJOR_UK_CITIES = ["London","Birmingham","Manchester","Leeds","Glasgow","Liverpool","Newcastle upon Tyne","Sheffield","Bristol","Edinburgh","Cardiff","Belfast","Nottingham","Leicester","Coventry","Bradford","Kingston upon Hull","Stoke-on-Trent","Southampton","Portsmouth","Plymouth","Derby","Wolverhampton","Swansea","Aberdeen","Brighton","Norwich","Reading","Milton Keynes","Oxford","Cambridge","York"];
+function majorUkCities() {
+  const all = ukTowns();
+  return MAJOR_UK_CITIES.map(n => all.find(t => t.name === n)).filter(Boolean);
+}
+
+// Straight-line (great-circle) distance in miles. Road distance is longer;
+// everything shown to the user says "about" and "straight line" accordingly.
+function milesBetween(a, b) {
+  if (!a || !b) return null;
+  const R = 3958.8, rad = (x) => x * Math.PI / 180;
+  const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+// Apostrophes are dropped, not kept: GeoNames writes "Bishops Stortford" and
+// "King's Lynn", and people type either form of both.
+const normPlace = (s) => String(s || "").toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+// Every town matching a typed name, most populous first. Accepts the short
+// names people use ("Hull") and ignores case, punctuation and hyphens.
+function findTowns(name) {
+  const n = normPlace(name);
+  if (!n) return [];
+  const target = TOWN_ALIASES[n] ? normPlace(TOWN_ALIASES[n]) : n;
+  return ukTowns().filter(t => normPlace(t.name) === target);
+}
+
+// Label that tells same-named places apart: "Bangor, Wales" when the nation
+// settles it, otherwise the distance from the nearest major city ("Newport,
+// about 29 miles from Wolverhampton"). Nearest-town labels named suburbs
+// nobody outside them knows, so a major city is used as the landmark.
+function townLabel(town, matches) {
+  const name = townDisplayName(town);
+  // Compared by name and position, not identity: the base town comes back
+  // from the saved profile as a copy, and must not count as its own twin.
+  const isSelf = (m) => m.name === town.name && m.lat === town.lat && m.lng === town.lng;
+  const same = (matches || findTowns(town.name)).filter(m => !isSelf(m));
+  if (!same.length) return name;
+  if (!same.some(m => m.nation === town.nation)) return `${name}, ${NATION_NAMES[town.nation]}`;
+  let best = null, bestD = Infinity;
+  for (const c of majorUkCities()) {
+    const d = milesBetween(town, c);
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  if (!best) return `${name}, ${NATION_NAMES[town.nation]}`;
+  return bestD < 3 ? `${name}, ${townDisplayName(best)}` : `${name}, about ${Math.round(bestD)} miles from ${townDisplayName(best)}`;
+}
+
+// Towns within `radius` miles of `base`, nearest first. Places under 10,000
+// are left out unless asked for: a 30-mile circle around a city otherwise
+// lists hundreds of villages.
+function townsNear(base, radius, { includeSmall = false, limit = 24 } = {}) {
+  if (!base) return [];
+  return ukTowns()
+    .filter(t => includeSmall || t.big || t.name === base.name)
+    .map(t => ({ town: t, miles: milesBetween(base, t) }))
+    .filter(x => x.miles <= radius)
+    .sort((a, b) => a.miles - b.miles)
+    .slice(0, limit);
+}
+
+// Pages on the customer's site whose address contains the place or sector,
+// from the Search Console pages list. Matches whole slug words, so "chester"
+// does not match /manchester-office/ or /chester-le-street/.
+function pagesNamingPlace(pages, place) {
+  const formalName = typeof place === "string" ? (TOWN_ALIASES[normPlace(place)] || place) : (place && place.name) || "";
+  const toSlug = (s) => normPlace(s).replace(/'/g, "").split(" ").filter(Boolean).join("-");
+  const formal = toSlug(formalName), short = toSlug(townDisplayName(formalName));
+  if (!formal) return [];
+  const out = [];
+  for (const p of Array.isArray(pages) ? pages : []) {
+    const raw = typeof p === "string" ? p : (p && p.page) || "";
+    const path = raw.replace(/^https?:\/\/[^/]+/i, "") || "/";
+    let decoded = path;
+    try { decoded = decodeURIComponent(path); } catch { /* malformed escapes: use as-is */ }
+    const slug = "-" + decoded.toLowerCase().replace(/'/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") + "-";
+    // Whole slug words only, and "Chester-le-Street", "Newcastle-under-Lyme",
+    // "Stratford-upon-Avon" are different places from Chester, Newcastle...
+    const wordHit = (n) => {
+      for (let i = slug.indexOf(`-${n}-`); i !== -1; i = slug.indexOf(`-${n}-`, i + 1)) {
+        if (!/^-(le|upon|under|on)-/.test(slug.slice(i + n.length + 1))) return true;
+      }
+      return false;
+    };
+    const hit = wordHit(formal) || (short !== formal && wordHit(short));
+    if (hit && !out.includes(path)) out.push(path);
+  }
+  return out;
+}
+
+// The answers the customer gave about a town, as plain facts. The prompt uses
+// exactly these, and so does the suggested sentence, so nothing appears in the
+// page that the customer did not tap or type.
+const LOC_ANSWER_TEXT = {
+  worked: { regular: "works with clients in {town} regularly", few: "has already worked with clients in {town}" },
+  speed:  { same: "can usually be on site in {town} the same day", next: "can be on site in {town} the next working day", remote: "supports clients in {town} remotely rather than on site" },
+  office: { yes: "has an office or staff based in {town}" },
+};
+function locationFacts({ town, base, miles, answers = {}, extra = "" }) {
+  const t = townDisplayName(town), facts = [];
+  const fill = (s) => s.replace(/\{town\}/g, t);
+  if (answers.worked && LOC_ANSWER_TEXT.worked[answers.worked]) facts.push(fill(LOC_ANSWER_TEXT.worked[answers.worked]));
+  if (answers.office === "yes") facts.push(fill(LOC_ANSWER_TEXT.office.yes));
+  else if (base && miles != null && miles >= 1 && normPlace(base.name) !== normPlace(town && town.name))
+    facts.push(`is based in ${townDisplayName(base)}, about ${Math.round(miles)} miles from ${t} in a straight line`);
+  if (answers.speed && LOC_ANSWER_TEXT.speed[answers.speed]) facts.push(fill(LOC_ANSWER_TEXT.speed[answers.speed]));
+  if (String(extra || "").trim()) facts.push(`in the business's own words: "${String(extra).trim().replace(/\s+/g, " ")}"`);
+  return facts;
+}
+
+function suggestLocationSentence({ town, base, miles, answers = {} }) {
+  const t = townDisplayName(town), bits = [];
+  if (answers.worked === "regular") bits.push(`We work with clients in ${t} regularly`);
+  else if (answers.worked === "few") bits.push(`We've already worked with clients in ${t}`);
+  if (answers.office === "yes") bits.push(`${bits.length ? "we have" : "We have"} staff based in ${t}`);
+  else if (base && miles != null && miles >= 1 && normPlace(base.name) !== normPlace(town && town.name))
+    bits.push(`${bits.length ? "we're" : "We're"} about ${Math.round(miles)} miles away in ${townDisplayName(base)}`);
+  if (answers.speed === "same") bits.push(`${bits.length ? "can" : "We can"} usually be with you the same day`);
+  else if (answers.speed === "next") bits.push(`${bits.length ? "can" : "We can"} be with you the next working day`);
+  else if (answers.speed === "remote") bits.push(`${bits.length ? "support" : "We support"} clients there remotely`);
+  if (!bits.length) return "";
+  const last = bits.pop();
+  return (bits.length ? `${bits.join(", ")} and ${last}` : last) + ".";
+}
+
+// Whether a location page may be generated, and what to tell the user.
+function locationGate({ town, answers = {} }) {
+  if (!town) return { ok: false, stop: false, message: "Choose a town first." };
+  const t = townDisplayName(town);
+  if (answers.worked === "none" && answers.office === "no")
+    return { ok: false, stop: true, message: `You haven't worked in ${t} yet, so there's nothing true to say that your other pages don't already. Come back once you have, or choose somewhere you do work.` };
+  if (!answers.worked || !answers.speed || !answers.office)
+    return { ok: false, stop: false, message: `Answer the three questions about ${t}.` };
+  return { ok: true, stop: false, message: "" };
+}
+
+// Town names that are also ordinary words or common first names/surnames.
+// These count as a place only after a location word ("in Reading", "near
+// Mold"); elsewhere "Reading the guidance" or "Street parking" is just English.
+const TOWN_NAMES_AS_WORDS = new Set(["Arnold","Banks","Barking","Barry","Bath","Battle","Benson","Bentley","Blackwell","Boston","Bourne","Buckley","Burton","Bury","Church","Cove","Crook","Crosby","Cults","Deal","Denny","Diss","Fleet","Flint","Freshwater","Grove","Hale","Hamilton","Hampton","Hayes","Hoo","Hook","Hope","Houston","Hyde","Irvine","Johnstone","Keith","Kimberley","Law","Leigh","Leslie","Lincoln","March","Melbourne","Moira","Mold","Nelson","Norton","Par","Perth","Portland","Ramsey","Reading","Richmond","Rugby","Rye","Sale","Sandwich","Sandy","Send","Settle","Shelley","Stanley","Stone","Street","Thorne","Tumble","Victoria","Ware","Washington","Wellington","Wells","Wick","Windsor","Alexandria"]);
+// Never treated as a town: a small Yorkshire town shares the nation's name,
+// "March" is a Cambridgeshire town but in an article it is the month.
+const TOWN_NAMES_NEVER = new Set(["Wales", "March"]);
+
+let _placeRe = null;
+function placeNameRegex() {
+  if (_placeRe) return _placeRe;
+  const names = new Set();
+  for (const t of ukTowns()) { if (!TOWN_NAMES_NEVER.has(t.name)) { names.add(t.name); names.add(townDisplayName(t)); } }
+  const alt = [...names].sort((a, b) => b.length - a.length).map(escapeRe).join("|");
+  // No lookbehind: iOS Safari before 16.4 cannot parse it. The character
+  // before the name is captured instead (group 1) and skipped when reading.
+  _placeRe = new RegExp(`(^|[^A-Za-z'’-])(${alt})(?![A-Za-z'’-])`, "g");
+  return _placeRe;
+}
+
+// Readable text of the page body, without the header and footer bars.
+function pageBodyText(html) {
+  const src = String(html || "");
+  const body = src.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+  return articleText((body ? body[1] : src)
+    .replace(/<header[\s\S]*?<\/header>/gi, " ")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, " ")).replace(/\s+/g, " ").trim();
+}
+
+// A location word directly before a place, or before a list it is part of
+// ("we cover Mold and Flint", "in Chester, Mold or Flint"). Case-sensitive for
+// the place names themselves, so each location word is allowed either case.
+const PLACE_LEAD_WORDS = ["in","near","around","across","from","to","serving","serve","serves","covering","cover","covers","visit","visits","throughout","outside","including"];
+const PLACE_LEAD_RE = new RegExp(
+  `\\b(?:${PLACE_LEAD_WORDS.map(w => `[${w[0]}${w[0].toUpperCase()}]${w.slice(1)}`).join("|")})\\s+` +
+  `(?:[A-Z][\\w'’-]*(?:\\s+[A-Z][\\w'’-]*)*\\s*(?:,|and|or)\\s+)*$`);
+
+// Towns named in the page that the customer never gave us. On a location page
+// these are almost always invented claims ("we also cover Chester, Mold and
+// Flint"). Allowed: the target town, their base, and anything they typed.
+function findUnsuppliedPlaces(html, { allowed = [], suppliedText = "" } = {}) {
+  const text = pageBodyText(html);
+  const ok = new Set(allowed.filter(Boolean).map(a => normPlace(typeof a === "string" ? a : a.name)));
+  for (const a of allowed.filter(Boolean)) ok.add(normPlace(townDisplayName(a)));
+  const supplied = " " + normPlace(suppliedText) + " ";
+  const found = [], seen = new Set();
+  const re = placeNameRegex();
+  re.lastIndex = 0;
+  let m;
+  while ((m = re.exec(text))) {
+    const name = m[2], key = normPlace(name);
+    const at = m.index + m[1].length;
+    if (ok.has(key) || seen.has(key)) continue;
+    const formal = normPlace(TOWN_ALIASES[key] || name);
+    if (ok.has(formal)) continue;
+    if (supplied.includes(` ${key} `)) continue;
+    if (TOWN_NAMES_AS_WORDS.has(name)) {
+      // A location word directly before it, or before a list it is part of:
+      // "we cover Mold and Flint", "in Chester, Mold or Flint".
+      const lead = text.slice(Math.max(0, at - 80), at);
+      if (!PLACE_LEAD_RE.test(lead)) continue;
+    }
+    seen.add(key);
+    found.push(townDisplayName(name));
+  }
+  return found;
+}
+
+// Facts the customer gave that the page leaves out. The point of a location
+// or sector page is those facts, so a page that drops them is back to being
+// the same page with a different name on it.
+function detailTokens(extra) {
+  const src = String(extra || "");
+  const nums = [...new Set((src.match(/\d[\d,.]*\d|\d/g) || []).map(n => n.replace(/,/g, "")))];
+  const phrases = [];
+  // Capitalised runs that aren't simply the first word of a sentence.
+  for (const m of src.matchAll(/(^|[.!?]\s+|\s)((?:[A-Z][\w&'’-]*)(?:\s+(?:of|and|the|for|&)?\s*[A-Z][\w&'’-]*)*)/g)) {
+    const sentenceStart = m[1] === "" || /[.!?]/.test(m[1]);
+    let p = m[2].trim();
+    if (sentenceStart) { const rest = p.split(/\s+/).slice(1).join(" "); if (!rest) continue; p = rest; }
+    if (/^(I|We|Our|The|A|An|It|They|This|That|These|Those|Us|My)$/.test(p) || p.length < 3) continue;
+    if (!phrases.includes(p)) phrases.push(p);
+  }
+  return { nums, phrases };
+}
+function findMissingDetails(html, extra, { ignore = [] } = {}) {
+  const text = pageBodyText(html);
+  const norm = (s) => String(s).toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, " ");
+  const t = norm(text), tNum = t.replace(/(\d),(\d)/g, "$1$2");
+  const skip = new Set(ignore.filter(Boolean).map(i => norm(typeof i === "string" ? i : i.name)));
+  const { nums, phrases } = detailTokens(extra);
+  const missing = [];
+  for (const n of nums) if (!new RegExp(`(^|[^\\d.])${escapeRe(n)}(?![\\d])`).test(tNum)) missing.push(n);
+  for (const p of phrases) if (!skip.has(norm(p)) && !t.includes(norm(p))) missing.push(p);
+  return missing;
+}
+
+const SPEED_PATTERNS = {
+  same: { re: /\bsame[\s-]day\b/i, label: "same-day visits" },
+  next: { re: /\bnext[\s-](?:working[\s-]|business[\s-])?day\b/i, label: "next-working-day visits" },
+  remote: { re: /\bremote(?:ly)?\b/i, label: "remote support" },
+};
+function findMissingLocationAnswers(html, { town, base, miles, answers = {} } = {}) {
+  const text = pageBodyText(html), missing = [];
+  const t = townDisplayName(town);
+  if (t) {
+    const n = (text.match(new RegExp(`(?:^|[^A-Za-z])${escapeRe(t)}(?![A-Za-z])`, "gi")) || []).length;
+    if (n < 2) missing.push(`The page only mentions ${t} ${n === 1 ? "once" : "nowhere in the body"}.`);
+  }
+  const sp = SPEED_PATTERNS[answers.speed];
+  if (sp && !sp.re.test(text)) missing.push(`Your answer about ${sp.label} isn't in the page.`);
+  if (answers.office === "yes" && !/\b(office|staff|team|engineers?|colleagues?|based (?:in|at))\b/i.test(text))
+    missing.push(`The page doesn't mention your office or staff in ${t}.`);
+  if ((answers.worked === "regular" || answers.worked === "few") && t &&
+      !new RegExp(`(?:client|customer|worked|work with|project|job)[\\s\\S]{0,160}${escapeRe(t)}|${escapeRe(t)}[\\s\\S]{0,160}(?:client|customer|worked|project|job)`, "i").test(text))
+    missing.push(`The page doesn't say you've worked with clients in ${t}.`);
+  if (answers.office !== "yes" && base && miles != null && miles >= 1 && normPlace(base.name) !== normPlace(town && town.name)) {
+    const d = Math.round(miles);
+    if (!new RegExp(`\\b${d}\\s*(?:-\\s*)?miles?\\b`, "i").test(text)) missing.push(`The distance from ${townDisplayName(base)} (about ${d} miles) isn't in the page.`);
+  }
+  return missing;
+}
+
+// Regulations, standards and named bodies. Sector pages written from general
+// knowledge lean on these, and a wrong one ("regulated by the FSA" for a
+// pharmacy) is the kind of error a reader in that sector spots instantly.
+const REG_ACRONYM_OK = new Set(["UK","EU","US","USA","IT","HR","SEO","FAQ","FAQS","CEO","CFO","COO","CTO","SME","SMES","AI","API","PDF","CV","OK","TV","PC","PR","ROI","KPI","KPIS","B2B","B2C","CTA","AM","PM","DIY","ID","UX","UI","URL","HTML","CSS","Q1","Q2","Q3","Q4"]);
+function findRegulationMentions(html, suppliedText = "") {
+  const text = pageBodyText(html);
+  const supplied = String(suppliedText || "");
+  const out = [], seen = new Set();
+  const add = (s) => {
+    const k = s.toLowerCase().replace(/\s+/g, " ");
+    if (seen.has(k) || supplied.toLowerCase().includes(k)) return;
+    seen.add(k); out.push(s.replace(/\s+/g, " "));
+  };
+  const standards = text.match(/\b(?:ISO(?:\/IEC)?|IEC|BS(?:\s?EN)?)\s?\d{3,5}(?:[-:]\d+)*\b/g) || [];
+  standards.forEach(add);
+  const connector = "(?:\\s+(?:[A-Z][a-z]+|and|of|at|for|the|in|on|to|etc\\.|\\([A-Za-z ]+\\)))*";
+  // "Directive" and "Order" only count with a year or number after them:
+  // robots.txt "Disallow directives" are not laws.
+  for (const [kind, needsNumber] of [["Act", false], ["Regulations?", false], ["Directive", true], ["Order", true], ["Code of Practice", false]]) {
+    const tail = needsNumber ? "\\s+(?:(?:19|20)\\d{2}|\\d+\\/\\d+(?:\\/[A-Z]+)?)" : "(?:\\s+(?:19|20)\\d{2})?";
+    const re = new RegExp(`\\b[A-Z][a-z]+${connector}\\s+${kind}\\b${tail}`, "g");
+    for (const m of text.match(re) || []) {
+      // Drop leading sentence words ("Under the Misuse of Drugs Act" → the
+      // Act's own name), and skip a bare "the Act" that names nothing.
+      const name = m.replace(/^(?:(?:The|Under|Our|Your|This|That|Both|Each|Every|Within|By|With|Per|Any|All|Some|Many|Most)\s+)+(?:(?:the|a|an|any|all)\s+)*/, "");
+      if (new RegExp(`^(?:${kind})\\b`).test(name)) continue;
+      add(name);
+    }
+  }
+  const inStandard = new Set(standards.flatMap(s => s.match(/[A-Z]{2,}/g) || []));
+  // Acronyms only count next to regulatory wording ("GMP and MHRA
+  // inspections", "registered with the CQC"); on their own most acronyms in
+  // an article are technical (XML, HTTP) or everyday (VAT).
+  const REG_CONTEXT = /\b(regulat\w*|inspect\w*|complian\w*|complie?s?|standards?|guidance|licen[cs]\w*|accredit\w*|certif\w*|requirements?|rules|authority|regulator|registered|registration|framework|audit\w*|law|legal|legislation|statutory|obligations?|approved|enforce\w*)\b/i;
+  for (const m of text.matchAll(/\b[A-Z][A-Z0-9&]{1,6}s?\b/g)) {
+    const tok = m[0], bare = tok.replace(/s$/, "");
+    if (REG_ACRONYM_OK.has(tok.toUpperCase()) || REG_ACRONYM_OK.has(bare) || inStandard.has(bare)) continue;
+    if (/^\d/.test(tok) || !/[A-Z]{2}/.test(tok)) continue;
+    const around = text.slice(Math.max(0, m.index - 60), m.index + tok.length + 60);
+    if (!REG_CONTEXT.test(around)) continue;
+    add(bare);
+  }
+  return out;
+}
+
+// Claims of experience or clients. In "from what we know" mode the customer
+// has told us nothing about their work in the sector, so any such claim is
+// invented, however plausible it reads.
+function findExperienceClaims(html) {
+  const text = pageBodyText(html);
+  const sentences = text.replace(/([.!?])\s+/g, "$1\u0000").split("\u0000");
+  const pats = [
+    /\b(?:we|our team)\s*(?:have|'ve|’ve)\s+(?:worked|supported|helped|partnered|served|delivered|advised|been (?:working|supporting|helping))\b/i,
+    /\bwe(?:'ve|’ve| have)\s+(?:over|more than|\d+|many|years|decades)\b/i,
+    /\b(?:years|decades)\s+of\s+(?:experience|expertise)\b/i,
+    /\bour\s+(?:\w+\s+)?(?:clients|customers)\b/i,
+    /\b(?:trusted by|case stud(?:y|ies)|testimonials?)\b/i,
+    /\bwe\s+(?:support|work with|serve|partner with|help)\s+(?:many|numerous|several|dozens|hundreds|over|more than|a (?:wide|large|growing))\b/i,
+    /\b(?:our|we have)\s+(?:extensive|proven|deep|long)\s+(?:experience|track record|expertise)\b/i,
+  ];
+  const out = [];
+  for (const s of sentences) {
+    if (pats.some(p => p.test(s))) {
+      const short = s.length > 110 ? s.slice(0, 107).replace(/\s+\S*$/, "") + "…" : s;
+      if (!out.includes(short)) out.push(short);
+    }
+  }
+  return out;
+}
+
+// Repeated-text check between pages of the same type. A MinHash signature of
+// the page's 5-word phrases is stored with each generated page (64 numbers,
+// ~600 bytes) so later pages can be compared without storing the articles.
+// The town or sector name is replaced before hashing: two pages that differ
+// only by place name must score as identical, because that is exactly the
+// doorway pattern this exists to catch.
+const FP_SIZE = 64;
+function fnv32(s) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+function mix32(h) {
+  h ^= h >>> 16; h = Math.imul(h, 0x85ebca6b); h ^= h >>> 13; h = Math.imul(h, 0xc2b2ae35); h ^= h >>> 16;
+  return h >>> 0;
+}
+function pageShingles(html, variableTerms = []) {
+  let text = " " + bodyProseText(html).toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]+/g, " ") + " ";
+  const terms = variableTerms.filter(Boolean).map(v => normPlace(typeof v === "string" ? v : v.name).replace(/'/g, "")).filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+  for (const v of terms) text = text.split(` ${v} `).join(" xvarx ").split(` ${v} `).join(" xvarx ");
+  const w = text.trim().split(" ").filter(Boolean);
+  const out = new Set();
+  for (let i = 0; i + 5 <= w.length; i++) out.add(w.slice(i, i + 5).join(" "));
+  return out;
+}
+function pageFingerprint(html, variableTerms = []) {
+  const sh = pageShingles(html, variableTerms);
+  if (sh.size === 0) return null;
+  const sig = new Array(FP_SIZE).fill(0xffffffff);
+  for (const s of sh) {
+    const h = fnv32(s);
+    for (let i = 0; i < FP_SIZE; i++) {
+      const v = mix32(h ^ Math.imul(i + 1, 0x9e3779b1));
+      if (v < sig[i]) sig[i] = v;
+    }
+  }
+  return sig;
+}
+function fingerprintSimilarity(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== FP_SIZE || b.length !== FP_SIZE) return null;
+  let eq = 0;
+  for (let i = 0; i < FP_SIZE; i++) if (a[i] === b[i]) eq++;
+  return eq / FP_SIZE;
+}
+// Measured 24 Sep 2026 on the published SEO-tools cluster and guide articles:
+// eight genuinely different pages on related topics share at most 1.6% of
+// their 5-word phrases. A page that swaps only the place name scores 100%;
+// one that reuses a quarter of another page's sections scores 20-28%, half
+// scores 54-63%. 0.25 flags heavy reuse with a wide margin above anything a
+// genuinely different page produces. (64 hashes: about +/-5% at this level.)
+const FP_WARN_AT = 0.25;
+
+// Replace whatever structured data the model wrote with our own. Location and
+// sector pages are service pages, not articles, and the facts in the schema
+// (who provides it, where, for whom) must be the customer's, not the model's.
+function buildServiceSchema({ name, description, serviceType, providerName, providerUrl, pageUrl, areaServed, audience }) {
+  const o = { "@context": "https://schema.org", "@type": "Service" };
+  if (name) o.name = name;
+  if (serviceType) o.serviceType = serviceType;
+  if (description) o.description = description;
+  if (pageUrl) o.url = pageUrl;
+  o.provider = { "@type": "Organization", name: providerName || "" };
+  if (providerUrl) o.provider.url = providerUrl;
+  if (areaServed) o.areaServed = { "@type": "Place", name: areaServed };
+  if (audience) o.audience = { "@type": "Audience", audienceType: audience };
+  return o;
+}
+function replaceJsonLd(html, schemaObj) {
+  const src = String(html || "");
+  const json = JSON.stringify(schemaObj, null, 2).replace(/</g, "\\u003c");
+  const tag = `<script type="application/ld+json">\n${json}\n</script>`;
+  const stripped = src.replace(/[ \t]*<script\b[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>[ \t]*\r?\n?/gi, "");
+  if (/<\/head>/i.test(stripped)) return stripped.replace(/<\/head>/i, `${tag}\n</head>`);
+  if (/<body[^>]*>/i.test(stripped)) return stripped.replace(/<body[^>]*>/i, (b) => `${b}\n${tag}`);
+  return tag + "\n" + stripped;
+}
+function metaDescriptionOf(html) {
+  const tag = String(html || "").match(/<meta\b[^>]*name=["']description["'][^>]*>/i);
+  const c = tag && (tag[0].match(/content="([^"]*)"/i) || tag[0].match(/content='([^']*)'/i) || [])[1];
+  return c ? c.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").trim() : "";
+}
+
+// Sectors offered as chips, with what to tell us about each. The examples in
+// the prompts are the customer's to confirm, never text that reaches the page.
+const SECTOR_OPTIONS = {
+  "Pharmaceutical": ["Clients you support in pharma: manufacturers, wholesalers, pharmacies", "Standards your work sits within, such as GMP, GDP or MHRA inspections", "Problems specific to the sector: shift patterns, validated systems, audit trails"],
+  "Healthcare": ["Practices, trusts or care providers you work with", "Standards you work within, such as CQC or the Data Security and Protection Toolkit", "Problems specific to clinical settings"],
+  "Education": ["Schools or trusts you support, and roughly how many", "Frameworks you work within, such as DfE guidance or Ofsted", "Problems specific to schools: term-time demand, safeguarding records"],
+  "Legal": ["Firms you work with and their size", "Rules you work within, such as SRA requirements", "Problems specific to legal practices"],
+  "Manufacturing": ["Sites or companies you support", "Standards you work within, such as ISO certifications", "Problems specific to production environments"],
+  "Financial services": ["Firms you support", "Rules you work within, such as FCA requirements", "Problems specific to regulated finance"],
+  "Construction": ["Contractors or developers you work with", "Standards you work within, such as the CDM Regulations", "Problems specific to site-based teams"],
+  "Charities": ["Charities you support", "Rules you work within, such as Charity Commission guidance", "Problems specific to volunteer-heavy organisations"],
+  "Hospitality": ["Hotels, restaurants or venues you work with", "Standards you work within, such as food hygiene ratings", "Problems specific to seasonal, shift-based teams"],
+  "Retail": ["Retailers you support", "Rules or standards you work within", "Problems specific to shops and multi-site retail"],
+  "Public sector": ["Councils or public bodies you work with", "Frameworks you work within, such as procurement rules", "Problems specific to public organisations"],
+  "Technology": ["Tech companies you support", "Standards you work within, such as ISO 27001 or Cyber Essentials", "Problems specific to fast-growing tech teams"],
+};
+const SECTOR_GENERIC_PROMPTS = ["Clients you've worked with in this sector", "Rules or standards you work within", "Problems specific to this sector"];
+const SECTOR_MIN_DETAIL = 80;
+
+function sectorGate({ sector, mode, extra }) {
+  const s = String(sector || "").trim();
+  if (!s) return { ok: false, message: "Choose a sector first." };
+  if (mode === "general") return { ok: true, message: "" };
+  const n = String(extra || "").trim().length;
+  if (n === 0) return { ok: false, message: `Add at least one thing you actually do for ${s.toLowerCase()} clients, or choose "From what we know".` };
+  if (n < SECTOR_MIN_DETAIL) return { ok: false, message: `Keep going: ${SECTOR_MIN_DETAIL - n} more characters. Specifics help most: names, numbers you know, standards.` };
+  return { ok: true, message: "" };
+}
+
+// Default search phrase for each page type. Editable in the form, because
+// "plumber wrexham" and "plumbers in wrexham" are both reasonable choices.
+function locationPhrase(service, town) {
+  const s = String(service || "").trim(), t = townDisplayName(town);
+  return s && t ? `${s} ${t}`.toLowerCase() : "";
+}
+function sectorPhrase(service, sector) {
+  const s = String(service || "").trim(), x = String(sector || "").trim();
+  return s && x ? `${x} ${s}`.toLowerCase() : "";
+}
+
+// Everything to check on a finished location or sector page, as warnings for
+// the existing "things to check before publishing" panel.
+function validateLocalPage(html, ctx = {}) {
+  const w = [];
+  if (!html) return w;
+  const listOf = (a, n = 4) => a.slice(0, n).map(x => `"${x}"`).join(", ") + (a.length > n ? ` and ${a.length - n} more` : "");
+  if (ctx.type === "location") {
+    w.push(...findMissingLocationAnswers(html, ctx));
+    const miss = findMissingDetails(html, ctx.extra, { ignore: [ctx.town, ctx.base] });
+    if (miss.length) w.push(`Details from your own words aren't in the page: ${listOf(miss)}.`);
+    const places = findUnsuppliedPlaces(html, { allowed: [ctx.town, ctx.base], suppliedText: ctx.suppliedText });
+    if (places.length) w.push(`The page names places you didn't give us: ${listOf(places)}. Check it doesn't claim you work there, or remove them.`);
+  } else if (ctx.type === "sector") {
+    if (ctx.mode === "general") {
+      const regs = findRegulationMentions(html, ctx.suppliedText);
+      if (regs.length) w.push(`Written from general knowledge, so check these rules, standards and bodies are right for ${String(ctx.sector || "this sector").toLowerCase()}: ${listOf(regs, 6)}.`);
+      const claims = findExperienceClaims(html);
+      if (claims.length) w.push(`The page claims experience you didn't give us. Remove or confirm: ${listOf(claims, 2)}`);
+    } else {
+      const miss = findMissingDetails(html, ctx.extra, { ignore: [ctx.sector] });
+      if (miss.length) w.push(`Details from your own words aren't in the page: ${listOf(miss)}.`);
+    }
+    const places = findUnsuppliedPlaces(html, { allowed: [ctx.base], suppliedText: ctx.suppliedText });
+    if (places.length) w.push(`The page names places you didn't give us: ${listOf(places)}. Check it doesn't claim you work there, or remove them.`);
+  }
+  if (Array.isArray(ctx.fingerprint) && Array.isArray(ctx.others)) {
+    let worst = null;
+    for (const o of ctx.others) {
+      const s = fingerprintSimilarity(ctx.fingerprint, o && o.fp);
+      if (s != null && s >= FP_WARN_AT && (!worst || s > worst.s)) worst = { s, place: o.place };
+    }
+    if (worst) w.push(`Much of this page's wording repeats your ${worst.place} page (about ${Math.round(worst.s * 100)}% similar). Google treats near-identical pages as doorway pages. Add more that's specific to this ${ctx.type === "sector" ? "sector" : "town"}, or rewrite the repeated sections.`);
+  }
+  return w;
 }
 
 async function callClaude(userMsg, systemMsg, mode = 'standard') {
@@ -5313,13 +5876,54 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     // is stored yet, the name given in the Starting Out wizard is used.
     const [bizName,   setBizName]   = useState("");
     const savedBizNameRef = useRef("");
+    // The whole stored profile, so saving one field never wipes another.
+    // Business name and base town share the one `site_profile` record.
+    const savedProfileRef = useRef({});
+    const saveProfile = (patch) => {
+      savedProfileRef.current = { ...savedProfileRef.current, ...patch };
+      if (isPlaceholderSite(selectedSite)) return;
+      try { Promise.resolve(saveUserData(selectedSite, "site_profile", savedProfileRef.current)).catch(() => {}); } catch { /* never blocks the form */ }
+    };
+
+    // Page type: blog (unchanged), location or sector. See the Location &
+    // sector pages section at module level for the rules behind these.
+    const [pageType,   setPageType]   = useState("blog");
+    const [baseInput,  setBaseInput]  = useState("");
+    const [baseTown,   setBaseTown]   = useState(null);   // { name, lat, lng, nation }
+    const [locService, setLocService] = useState("");
+    const [reach,      setReach]      = useState("local");
+    const [radius,     setRadius]     = useState(30);
+    const [moreTowns,  setMoreTowns]  = useState(false);
+    const [smallTowns, setSmallTowns] = useState(false);
+    const [locTown,    setLocTown]    = useState(null);   // a town from the list, or { name, custom: true }
+    const [otherTown,  setOtherTown]  = useState("");
+    const [answers,    setAnswers]    = useState({ worked: null, speed: null, office: null });
+    const [locExtra,   setLocExtra]   = useState("");
+    const [secService, setSecService] = useState("");
+    const [sector,     setSector]     = useState("");
+    const [otherSector,setOtherSector]= useState("");
+    const [secMode,    setSecMode]    = useState("mine");
+    const [secExtra,   setSecExtra]   = useState("");
+    const [phraseEdit, setPhraseEdit] = useState(null);   // null = use the suggested phrase
+    const [replaceOk,  setReplaceOk]  = useState(false);
+    const [volume,     setVolume]     = useState(null);
+
     useEffect(() => {
       let cancelled = false;
       setBizName(""); savedBizNameRef.current = "";
+      savedProfileRef.current = {}; setBaseTown(null); setBaseInput("");
       if (!selectedSite || isPlaceholderSite(selectedSite)) return;
       (async () => {
         try {
           const prof = await loadUserData(selectedSite, "site_profile");
+          if (!cancelled && prof && typeof prof === "object") {
+            savedProfileRef.current = { ...prof };
+            const b = prof.baseTown;
+            if (b && typeof b.name === "string" && Number.isFinite(b.lat) && Number.isFinite(b.lng)) {
+              setBaseTown({ name: b.name, lat: b.lat, lng: b.lng, nation: b.nation || "" });
+              setBaseInput(townDisplayName(b.name));
+            }
+          }
           let name = (prof && typeof prof.businessName === "string") ? prof.businessName.trim() : "";
           if (!name) {
             const wiz = await loadUserData(selectedSite, "starting_out");
@@ -5330,6 +5934,86 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       })();
       return () => { cancelled = true; };
     }, [selectedSite]);
+
+    // ── Location & sector: everything the form and generate() share ──────
+    const lpService    = (pageType === "location" ? locService : secService).trim();
+    const lpSectorName = (otherSector.trim() || sector).trim();
+    const lpPlace      = pageType === "location" ? (locTown ? townDisplayName(locTown) : "")
+                       : pageType === "sector" ? lpSectorName : "";
+    const lpMiles      = pageType === "location" && baseTown && locTown && Number.isFinite(locTown.lat)
+                       ? milesBetween(baseTown, locTown) : null;
+    const lpDefaultPhrase = pageType === "location" ? locationPhrase(lpService, locTown)
+                          : pageType === "sector" ? sectorPhrase(lpService, lpSectorName) : "";
+    const lpPhrase     = String(phraseEdit != null ? phraseEdit : lpDefaultPhrase).trim();
+    const lpGate       = pageType === "location" ? locationGate({ town: locTown, answers })
+                       : pageType === "sector" ? sectorGate({ sector: lpSectorName, mode: secMode, extra: secExtra })
+                       : { ok: true, message: "" };
+    const lpSitePages  = lpPlace ? pagesNamingPlace(siteData?.pages || [], pageType === "location" ? locTown : lpSectorName) : [];
+    const lpHistory    = (() => { try { const h = JSON.parse(localStorage.getItem(`ra_content_history_${selectedSite}`) || "[]"); return Array.isArray(h) ? h : []; } catch { return []; } })();
+    const lpExisting   = lpPlace ? lpHistory.filter(h => h && h.type === pageType && normPlace(h.place) === normPlace(lpPlace) && normPlace(h.service) === normPlace(lpService)) : [];
+    const lpBlocked    = pageType === "blog" ? ""
+                       : !lpService ? "Add the service."
+                       : !lpGate.ok ? lpGate.message
+                       : !lpPhrase ? "Add a search phrase."
+                       : (lpExisting.length && !replaceOk) ? "Confirm this replaces your existing page."
+                       : "";
+    const canGenerate  = pageType === "blog" ? !!kw.trim() : !lpBlocked;
+    const baseQuery    = normPlace(baseInput);
+    const baseSuggestions = baseQuery.length >= 2 && !(baseTown && normPlace(townDisplayName(baseTown)) === baseQuery)
+      ? ukTowns().filter(t => normPlace(t.name).startsWith(baseQuery) || normPlace(townDisplayName(t)).startsWith(baseQuery)).slice(0, 6) : [];
+    const lpTownList   = pageType !== "location" ? []
+                       : reach === "uk" ? majorUkCities().map(t => ({ town: t, miles: null }))
+                       : baseTown ? townsNear(baseTown, radius, { includeSmall: smallTowns, limit: moreTowns ? 80 : 24 }) : [];
+    const otherMatches = otherTown.trim() ? findTowns(otherTown) : [];
+    const sameTown     = (a, b) => !!a && !!b && a.name === b.name && a.lat === b.lat;
+
+    // Choosing a different town or sector clears everything said about the
+    // previous one, so answers about Wrexham can never end up on a Mold page.
+    const resetPlace = () => {
+      setAnswers({ worked: null, speed: null, office: null });
+      setLocExtra(""); setPhraseEdit(null); setReplaceOk(false); setVolume(null);
+    };
+    const commitBase = (t) => {
+      const b = { name: t.name, lat: t.lat, lng: t.lng, nation: t.nation };
+      setBaseTown(b); setBaseInput(townDisplayName(t));
+      saveProfile({ baseTown: b });
+    };
+    const onBaseInput = (v) => {
+      setBaseInput(v);
+      // An exact, unambiguous name takes effect straight away; it is saved
+      // with the next generation, not on every keystroke.
+      const m = findTowns(v);
+      if (m.length === 1) setBaseTown({ name: m[0].name, lat: m[0].lat, lng: m[0].lng, nation: m[0].nation });
+      else if (!v.trim()) setBaseTown(null);
+    };
+    const pickTown = (t) => { if (!sameTown(t, locTown)) resetPlace(); setLocTown(t); setOtherTown(""); };
+    const onOtherTown = (v) => {
+      setOtherTown(v); resetPlace();
+      const m = findTowns(v);
+      setLocTown(!v.trim() ? null : m.length === 1 ? m[0] : m.length === 0 ? { name: v.trim().replace(/\s+/g, " "), custom: true } : null);
+    };
+    const checkVolume = async () => {
+      const phrase = lpPhrase;
+      if (!phrase) return;
+      setVolume({ phrase, state: "loading" });
+      try {
+        const res = await authFetch(`${WORKER_URL}/api/keyword-data`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: [phrase], country: "gb" }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 402) {
+          setVolume({ phrase, state: "error", message: data.upgrade ? "Search volume lookups aren't included in your plan." : `You've used all ${data.limit} keyword lookups this month.` });
+          return;
+        }
+        if (!res.ok) { setVolume({ phrase, state: "error", message: "Couldn't check search volume just now. Try again in a moment." }); return; }
+        const item = (Array.isArray(data.keywords) ? data.keywords[0] : null) || {};
+        setVolume({ phrase, state: "done", volume: item.available === false ? null : (item.volume ?? null) });
+      } catch {
+        setVolume({ phrase, state: "error", message: "Couldn't check search volume just now. Try again in a moment." });
+      }
+    };
 
     const loadMsgs = [
       "Researching your keyword…",
@@ -5365,7 +6049,9 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       h2Count:  (output.match(/<h2/gi)||[]).length,
       h1Count:  (output.match(/<h1/gi)||[]).length,
       wordEst:  Math.round(output.replace(/<[^>]*>/g,"").split(/\s+/).length),
-      hasKw:    !!(kw && normaliseForKw(output).includes(normaliseForKw(kw))),
+      hasKw:    pageType === "blog"
+                  ? !!(kw && normaliseForKw(output).includes(normaliseForKw(kw)))
+                  : !!(lpPhrase && kwNear(lpPhrase, articleText(output))),
       linkCount:(output.match(/<a\s/gi)||[]).length,
     } : null;
 
@@ -5516,7 +6202,10 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     };
 
     const generate = async () => {
-      if (!kw.trim()) return;
+      if (!canGenerate) return;
+      // The phrase every check measures against: the keyword for a blog post,
+      // the search phrase for a location or sector page.
+      const activeKw = pageType === "blog" ? kw.trim() : lpPhrase;
       setLoading(true); setError(null); setOutput(null); setWarnings([]);
       let mi = 0;
       const iv = setInterval(()=>{ mi=(mi+1)%loadMsgs.length; setLoadMsg(loadMsgs[mi]); }, 3200);
@@ -5561,7 +6250,11 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         .slice(0, 8);
       // Always include the homepage as a guaranteed-valid fallback
       const homepageUrl = `${siteBase}/`;
-      const linkPool = Array.from(new Set([homepageUrl, ...realPages]));
+      // Location and sector pages may also link to the site's own pages about
+      // that town or sector: they are real (Search Console reported them) and
+      // exactly what a reader of this page would want next.
+      const placePages = pageType === "blog" ? [] : lpSitePages.map(p => `${siteBase}${p}`);
+      const linkPool = Array.from(new Set([homepageUrl, ...realPages, ...placePages]));
       const linkRules = `\nINTERNAL LINK RULES — these are absolute:
 - You may ONLY link to URLs from the allowed list. Never invent a path; an invented path is a 404 and a serious error.
 - RELEVANCE IS REQUIRED. Only link when the destination genuinely relates to the sentence it sits in. An irrelevant link is worse than no link.
@@ -5588,7 +6281,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       // user's own figures in Notes, use only those. Without them, explain what
       // drives the cost and invite a quote — usually the better article for a
       // service business anyway.
-      const costRule = !isCostKeyword(kw) ? ""
+      const costRule = !isCostKeyword(activeKw) ? ""
         : /\d/.test(notes || "")
           ? `\nCOST QUESTION: this keyword asks about cost. Use ONLY the prices or ranges given in the notes above. State no other figures.`
           : `\nCOST QUESTION: this keyword asks about cost, and you have NOT been given the client's prices. Do not state any price, fee, salary or range, not even as an estimate. Explain what drives the cost (scope, size, experience, contract length, urgency) and invite the reader to ask for a quote.`;
@@ -5598,7 +6291,12 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       const bizNameClean = (bizName || "").trim();
       if (bizNameClean && bizNameClean !== savedBizNameRef.current && !isPlaceholderSite(selectedSite)) {
         savedBizNameRef.current = bizNameClean;
-        try { Promise.resolve(saveUserData(selectedSite, "site_profile", { businessName: bizNameClean })).catch(() => {}); } catch { /* never blocks generation */ }
+        saveProfile({ businessName: bizNameClean });
+      }
+      // Same for the base town, if it was typed rather than picked.
+      if (baseTown && (!savedProfileRef.current.baseTown || savedProfileRef.current.baseTown.name !== baseTown.name
+          || savedProfileRef.current.baseTown.lat !== baseTown.lat)) {
+        saveProfile({ baseTown });
       }
       const sectionCount = targetWords <= 800  ? 3
                          : targetWords <= 1200 ? 4
@@ -5627,8 +6325,129 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       // SEO_FRESHNESS registry, injected into every AI call by callClaude.
       // Do not re-add it to this prompt — it would be sent twice.
 
+      // Shared by the blog prompt and the location/sector prompt: moved here
+      // verbatim so both pages get identical styling instructions.
+      const designBlock = `VISUAL DESIGN — RankActions brand (light cream body for readability, dark branded chrome with green accents):
+
+CSS to include in <style>:
+- Body: background #f5f1e8 (cream), color #0d0d0d, font-family 'DM Sans', -apple-system, sans-serif, line-height 1.65
+- Heading font: 'Barlow Condensed', Impact, sans-serif (font-weight 500, no uppercase, no positive letter-spacing — see Heading style rule below)
+- Brand primary green: #0e7a3c (use for links, CTA button background, callout border-left, H2 underlines)
+- Brand accent green: #1ea863 (use for hover states, secondary highlights, "Actions" wordmark colour)
+- Header bar: dark background #0d0d0d, white text, padding 1rem 2rem, contains the RankActions wordmark on the left — render it inline as TWO spans so colours match the brand: <span style="color:#ffffff">Rank</span><span style="color:#1ea863">Actions</span> in Barlow Condensed weight 500 (the brand font's heaviest weight loaded). On the right, small cream-coloured text "Generated for ${displaySite(selectedSite)}"
+- Footer bar: dark background #0d0d0d, white text, padding 1.5rem 2rem, centered, says "Generated by RankActions — AI-powered SEO content" with "rankactions.com" linked in green #1ea863
+- Article body: max-width 760px, margin auto, padding 3rem 2rem
+- Hero section: lighter cream #faf6ed background, padding 3rem 2rem, centered
+- Links: color #0e7a3c, text-decoration underline (hover: #1ea863)
+- CTA button: background #0e7a3c, color white, padding .9rem 2rem, border-radius 6px, font-weight 500, no underline, font-family 'Barlow Condensed', text-transform uppercase, letter-spacing 1px (hover: #1ea863)
+- Callout/tip box: background #faf6ed, border-left 3px solid #0e7a3c, padding 1rem 1.5rem, margin 1.5rem 0
+- Include Google Fonts link: https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap
+- Heading style: NOT all uppercase. Use sentence case or title case. Set CSS h1/h2/h3 with text-transform: none, font-weight 500 (the Google Fonts URL above loads ONLY weights 400 and 500 for Barlow Condensed — do NOT specify 600 or 700 in CSS, the browser will fall back to 500 automatically), color #0d0d0d, letter-spacing 0 or -0.5px (NOT positive tracking). The Barlow Condensed font is already strong at 500 weight; uppercase and 700 weight together make headings overpowering on cream backgrounds.`;
+
       try {
-        const prompt = `You are an expert SEO content writer. Generate a complete, production-ready HTML blog post styled with RankActions branding.
+        // ── Location and sector pages ─────────────────────────────────────
+        // A separate prompt, not a variant of the blog one: these are service
+        // pages, and what the model may say is limited to facts the customer
+        // gave. Structured data is not requested — it is built afterwards from
+        // the customer's own details (see replaceJsonLd below).
+        const localPrompt = pageType === "blog" ? "" : (() => {
+          const isLoc = pageType === "location";
+          const bizLabel = bizNameClean || displaySite(selectedSite);
+          const place = lpPlace;
+          const sectorLower = lpSectorName.toLowerCase();
+          const audience = isLoc ? `customers in ${place}` : `${sectorLower} organisations`;
+          const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+          const factLines = [];
+          if (isLoc) {
+            for (const f of locationFacts({ town: locTown, base: baseTown, miles: lpMiles, answers, extra: locExtra })) {
+              factLines.push(/^in the business/.test(f) ? `- ${cap(f)}` : `- ${bizLabel} ${f}.`);
+            }
+            if (answers.worked === "none") factLines.push(`- ${bizLabel} has NOT yet worked with clients in ${place}. Never suggest that it has.`);
+            if (answers.office === "no") factLines.push(`- ${bizLabel} has NO office or staff in ${place}. Never suggest that it has.`);
+            if (answers.speed === "remote") factLines.push(`- Support in ${place} is remote. Never promise site visits.`);
+          } else if (secMode === "mine") {
+            factLines.push(`- In the business's own words: "${secExtra.trim().replace(/\s+/g, " ")}"`);
+          } else {
+            factLines.push(`- None. ${bizLabel} has told you nothing about its work in ${sectorLower}. Write about what ${sectorLower} organisations need from ${lpService} and how the service meets it, not about the business's track record.`);
+          }
+          if (lpSitePages.length) {
+            factLines.push(`- Pages on the site that relate to ${place} (link to them where genuinely relevant; they are in the allowed list): ${lpSitePages.map(p => siteBase + p).join(", ")}`);
+          }
+          const allowedPlaces = [place, isLoc && baseTown ? townDisplayName(baseTown) : ""].filter(Boolean);
+          const never = isLoc ? [
+            `Local landmarks, neighbourhoods, streets, local statistics, council or local-authority names, local events, or anything presented as knowledge of ${place} that is not in the facts above.`,
+            `Any other town, city, county or region by name. The only places you may name are ${allowedPlaces.join(" and ")}.`,
+            `Office addresses, named staff, named clients, projects, testimonials, reviews, case studies, awards, accreditations or years in business that are not in the facts above.`,
+            `Response times, coverage areas or availability other than what the facts above say.`,
+          ] : [
+            `Any claim that ${bizLabel} has worked in, has clients in, or has experience of ${sectorLower}${secMode === "mine" ? " beyond what the business's own words above say" : ""}.`,
+            `Named clients, projects, testimonials, reviews, case studies, awards, accreditations or years in business that are not in the facts above.`,
+            `Any town, city or region by name.`,
+            secMode === "mine"
+              ? `Regulations, standards or regulators beyond those in the business's own words, unless you are certain they apply to ${sectorLower} in the UK. Name at most three in total.`
+              : `A regulation, standard or regulator you are not certain applies to ${sectorLower} in the UK. Name at most three in total. A person checks every one before publishing.`,
+          ];
+          never.push("Prices, fees, statistics or percentages unless they appear in the details above.");
+          const exampleH1 = isLoc ? `${cap(lpService)} in ${place}` : `${cap(lpPhrase)}`;
+          return `You are an expert SEO copywriter. Generate a complete, production-ready HTML ${isLoc ? "location" : "sector"} service page styled with RankActions branding.
+
+OUTPUT ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no code fences, no explanation.
+
+WHAT THIS PAGE IS:
+A service page for ${bizLabel}'s ${lpService} for ${audience}. It is NOT a blog post${isLoc ? ` and NOT a guide to ${place}` : ""}. A reader ${isLoc ? `in ${place}` : `working in ${sectorLower}`} should finish it knowing what the service is, how it works for them, what happens first, and why ${bizLabel} is a sensible choice${isLoc ? ` for ${place} specifically` : ""}. What makes this page different from ${bizLabel}'s other ${isLoc ? "town" : "sector"} pages is the facts below: build the page around them.
+
+INPUTS:
+- Search phrase: "${lpPhrase}"
+- Business name: ${bizLabel}
+- Business/niche: ${biz.trim() || "not given"}
+- Service: ${lpService}
+- ${isLoc ? `Town: ${place}` : `Sector: ${lpSectorName}`}
+- Tone: ${tone}
+- Target word count: ${targetWords} words — see LENGTH REQUIREMENT below; this is not optional
+- Primary CTA: ${cta.trim() || "Contact us to find out more"}
+- Additional notes: ${notes.trim() || "none"}
+- Client website: ${displaySite(selectedSite)}
+${linkPoolContext}
+TODAY'S DATE IS ${todayHuman} (${todayIso}). Never output a date from memory.
+${historyContext}
+
+FACTS YOU MAY USE — the ONLY things you may say about ${bizLabel}'s work ${isLoc ? `in ${place}` : `in ${sectorLower}`}:
+${factLines.join("\n")}
+
+NEVER INVENT — these rules are absolute:
+${never.map(n => `- ${n}`).join("\n")}
+Where the facts run out, write about the service itself: what it involves, how it would work for ${audience}, what to expect first, common mistakes, and what to ask any provider. That is general knowledge of the service, not a claim about ${bizLabel}.
+
+${designBlock}
+
+SEARCH PHRASE — MANDATORY (this is an SEO tool, the page must pass an SEO check):
+- The words of "${lpPhrase}" must appear, in the same order, in the <title>, the <meta name="description">, the <h1> and the first sentence of the opening paragraph. Write them as natural English: you may add small words such as "in", "for" or "the" between them (e.g. "${exampleH1}"), but never reorder, drop or swap them.
+- Name ${isLoc ? place : sectorLower} in at least 2 of the H2 headings and 3-6 times in the body. Do not repeat it in every sentence.
+
+BUILD THIS STRUCTURE:
+1. HEAD: title tag (search phrase near the front, about 50-60 chars), meta description written as a content="" attribute (145-155 chars, contains the search phrase), canonical URL (${siteBase}/${raSlug(lpPhrase)}/), robots, Open Graph tags (og:title contains the search phrase), the Google Fonts link, and a <style> block with the CSS above. Do NOT write any JSON-LD or other structured data: it is added afterwards.
+2. HEADER BAR: dark, with the two-tone "RankActions" wordmark on the left (white "Rank" + green "Actions", Barlow Condensed weight 500) and "Generated for ${displaySite(selectedSite)}" on the right in small cream text
+3. HERO SECTION: H1 containing the search phrase as described above, followed by a one-line subtitle. No author byline and no read time: this is a service page.
+4. PAGE BODY inside <article class="article-body">:
+   - Opening paragraph: the FIRST SENTENCE contains the search phrase within the first 25 words
+   - EXACTLY ${sectionCount} H2 sections, each of about ${perSection} words of body prose (no more than ${Math.round(perSection * 1.15)}) — count as you write
+   - The last H2 section answers 3 questions ${audience} commonly ask about ${lpService}, each as an H3 question with a short answer, using only the facts above and general knowledge of the service
+   - One tip/callout box (green border-left)
+   - Internal links: follow the INTERNAL LINK RULES above exactly. Format: <a href="[URL from the allowed list]">[descriptive anchor text]</a>
+   - Each internal link should have a comment: <!-- Internal link: link to your [page type] page -->
+5. CTA SECTION: a real clickable button, NOT plain text. Use exactly this markup:
+   <div class="cta-section"><a href="${homepageUrl}" class="cta-button">${cta.trim() || "Get in touch today"}</a></div>
+   The .cta-button class must be defined in the <style> block.
+6. FOOTER BAR: dark, centered, "Generated by RankActions — AI-powered SEO content" with "rankactions.com" linked in green #1ea863
+
+LENGTH REQUIREMENT — MANDATORY:
+Target: ${targetWords} words of body prose, counted inside the <article> only (excluding HTML, CSS,
+the header and footer bars, the hero and the CTA). The acceptable range is
+${Math.round(targetWords * 0.9)}–${Math.round(targetWords * 1.1)} words. That is ${sectionCount} sections of about ${perSection} words each.
+Use the words for depth about the service, never for padding and never for invented detail.${costRule}`;
+        })();
+
+        const prompt = localPrompt || `You are an expert SEO content writer. Generate a complete, production-ready HTML blog post styled with RankActions branding.
 
 OUTPUT ONLY raw HTML starting with <!DOCTYPE html>. No markdown, no code fences, no explanation.
 
@@ -5644,22 +6463,7 @@ ${linkPoolContext}${pillarContext}
 TODAY'S DATE IS ${todayHuman} (${todayIso}). Any date shown anywhere in the article — the visible byline, the meta block, JSON-LD datePublished and dateModified — MUST be this exact date. Never output a date from memory.
 ${historyContext}
 
-VISUAL DESIGN — RankActions brand (light cream body for readability, dark branded chrome with green accents):
-
-CSS to include in <style>:
-- Body: background #f5f1e8 (cream), color #0d0d0d, font-family 'DM Sans', -apple-system, sans-serif, line-height 1.65
-- Heading font: 'Barlow Condensed', Impact, sans-serif (font-weight 500, no uppercase, no positive letter-spacing — see Heading style rule below)
-- Brand primary green: #0e7a3c (use for links, CTA button background, callout border-left, H2 underlines)
-- Brand accent green: #1ea863 (use for hover states, secondary highlights, "Actions" wordmark colour)
-- Header bar: dark background #0d0d0d, white text, padding 1rem 2rem, contains the RankActions wordmark on the left — render it inline as TWO spans so colours match the brand: <span style="color:#ffffff">Rank</span><span style="color:#1ea863">Actions</span> in Barlow Condensed weight 500 (the brand font's heaviest weight loaded). On the right, small cream-coloured text "Generated for ${displaySite(selectedSite)}"
-- Footer bar: dark background #0d0d0d, white text, padding 1.5rem 2rem, centered, says "Generated by RankActions — AI-powered SEO content" with "rankactions.com" linked in green #1ea863
-- Article body: max-width 760px, margin auto, padding 3rem 2rem
-- Hero section: lighter cream #faf6ed background, padding 3rem 2rem, centered
-- Links: color #0e7a3c, text-decoration underline (hover: #1ea863)
-- CTA button: background #0e7a3c, color white, padding .9rem 2rem, border-radius 6px, font-weight 500, no underline, font-family 'Barlow Condensed', text-transform uppercase, letter-spacing 1px (hover: #1ea863)
-- Callout/tip box: background #faf6ed, border-left 3px solid #0e7a3c, padding 1rem 1.5rem, margin 1.5rem 0
-- Include Google Fonts link: https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500&family=DM+Sans:wght@400;500;700&display=swap
-- Heading style: NOT all uppercase. Use sentence case or title case. Set CSS h1/h2/h3 with text-transform: none, font-weight 500 (the Google Fonts URL above loads ONLY weights 400 and 500 for Barlow Condensed — do NOT specify 600 or 700 in CSS, the browser will fall back to 500 automatically), color #0d0d0d, letter-spacing 0 or -0.5px (NOT positive tracking). The Barlow Condensed font is already strong at 500 weight; uppercase and 700 weight together make headings overpowering on cream backgrounds.
+${designBlock}
 
 KEYWORD PLACEMENT — MANDATORY (this is an SEO tool, the article must pass an SEO check):
 - The exact phrase "${kw.trim()}" MUST appear in the <title> tag — placed near the front (first 30 chars)
@@ -5726,6 +6530,9 @@ IMPORTANT — The keyword "${kw.trim()}" MUST appear verbatim in the title, meta
         let words = countArticleWords(clean);
         if (words < floor) {
           setLoadMsg(`Expanding to ${targetWords.toLocaleString()} words…`);
+          const expansionExtra = pageType === "blog" ? ""
+            : `\nDo NOT add anything about ${lpPlace} that is not already in the page, and do NOT name any other town, city or region.`
+              + (pageType === "sector" && secMode === "general" ? " Do NOT add claims of clients or experience, or new regulations or standards." : "");
           try {
             const expanded = await callClaude(
               `The article below is ${words} words of body prose. It must be between ${floor} and ${Math.round(targetWords * 1.1)} words.
@@ -5737,9 +6544,9 @@ remove anything that is already there.
 Add depth inside the existing sections: worked examples, common mistakes, what to do
 first, how long it takes, what happens if you get it wrong. Aim for about ${perSection}
 words of prose per H2 section, and do not go past ${Math.round(targetWords * 1.1)} words in total.
-Do NOT add specific prices, fees, statistics or percentages that are not already in the article.
+Do NOT add specific prices, fees, statistics or percentages that are not already in the article.${expansionExtra}
 
-Keep the exact phrase "${kw.trim()}" appearing naturally 4-8 times in total — do not add
+Keep the exact phrase "${activeKw}" appearing naturally 4-8 times in total — do not add
 more instances just because the article is longer.
 
 ARTICLE TO EXPAND:
@@ -5766,15 +6573,47 @@ ${clean}`,
           }
         }
 
+        // Location and sector pages: replace whatever structured data the model
+        // wrote with a Service built from the customer's own details.
+        let pageFp = null;
+        if (pageType !== "blog") {
+          const canonical = (clean.match(/<link\b[^>]*rel=["']canonical["'][^>]*href=["']([^"']+)["']/i) || [])[1];
+          clean = replaceJsonLd(clean, buildServiceSchema({
+            name: tagInner(clean, "h1") || lpPhrase,
+            description: metaDescriptionOf(clean),
+            serviceType: lpService,
+            providerName: bizNameClean || displaySite(selectedSite),
+            providerUrl: homepageUrl,
+            pageUrl: canonical || `${siteBase}/${raSlug(lpPhrase)}/`,
+            areaServed: pageType === "location" ? lpPlace : "",
+            audience: pageType === "sector" ? `${lpSectorName} organisations` : "",
+          }));
+          pageFp = pageFingerprint(clean, [pageType === "location" ? locTown : lpSectorName]);
+        }
+
         // Report what the guards can't fix. Runs before the completeness check
         // so a truncated article still reports its other problems.
-        setWarnings(validateGeneratedHtml(clean, {
-          keyword: kw.trim(),
+        // Anything the user typed counts as supplied, so their own prices
+        // and figures are never flagged back at them.
+        const suppliedText = [kw, biz, bizName, cta, notes,
+          ...(pageType === "blog" ? [] : [lpPhrase, lpService, lpPlace, baseTown ? baseTown.name : "", pageType === "location" ? locExtra : secExtra])].join(" ");
+        const pageWarnings = validateGeneratedHtml(clean, {
+          keyword: activeKw,
           targetWords,
-          // Anything the user typed counts as supplied, so their own prices
-          // and figures are never flagged back at them.
-          suppliedText: [kw, biz, bizName, cta, notes].join(" "),
-        }));
+          suppliedText,
+          looseTitle: pageType !== "blog",
+        });
+        if (pageType !== "blog") {
+          pageWarnings.push(...validateLocalPage(clean, {
+            type: pageType, town: locTown, base: baseTown, miles: lpMiles, answers,
+            extra: pageType === "location" ? locExtra : secExtra,
+            mode: secMode, sector: lpSectorName, suppliedText,
+            fingerprint: pageFp,
+            // Earlier pages of the same type, except earlier versions of this one.
+            others: lpHistory.filter(h => h && h.type === pageType && Array.isArray(h.fp) && normPlace(h.place) !== normPlace(lpPlace)),
+          }));
+        }
+        setWarnings(pageWarnings);
 
         // Completeness check. Longform generations can hit the token ceiling and
         // stop mid-sentence; the HTML still previews fine until you reach the end.
@@ -5795,7 +6634,9 @@ ${clean}`,
         try {
           const histKey = `ra_content_history_${selectedSite}`;
           const hist = JSON.parse(localStorage.getItem(histKey) || "[]");
-          hist.push({ keyword: kw.trim(), date: new Date().toISOString().slice(0,10) });
+          hist.push(pageType === "blog"
+            ? { keyword: kw.trim(), date: new Date().toISOString().slice(0,10) }
+            : { keyword: activeKw, date: new Date().toISOString().slice(0,10), type: pageType, place: lpPlace, service: lpService, fp: pageFp });
           localStorage.setItem(histKey, JSON.stringify(hist.slice(-50))); // keep last 50
           saveUserData(selectedSite, 'content_history', hist.slice(-50));
         } catch {}
@@ -5841,7 +6682,7 @@ ${clean}`,
 
     const download = () => {
       if (!output) return;
-      const slug = kw.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
+      const slug = (pageType === "blog" ? kw : lpPhrase).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([publishableHtml(output)],{type:"text/html"}));
       a.download = `${slug || "article"}.html`;
@@ -5870,7 +6711,7 @@ ${clean}`,
       <div className="cg-wrap">
         <div className="cg-header">
           <div className="cg-title">Content Generator</div>
-          <div className="cg-sub">Generate SEO-optimised blog posts from your target keywords</div>
+          <div className="cg-sub">Generate SEO-optimised blog posts, location pages and sector pages</div>
         </div>
 
         {/* Pre-fill notice — shown when arriving from SEO Opportunities */}
@@ -5883,7 +6724,7 @@ ${clean}`,
         {/* Privacy notice — shown prominently per GDPR best practice */}
         <div className="cg-privacy">
           <span className="cg-privacy-icon">🔒</span>
-          <span><strong>Data notice:</strong> Only the keyword, business context and tone you enter below are sent to the AI to generate content. No personal data, no Search Console data, and no user information is included in the request. Generated articles are not stored — they exist in your browser only until you download or copy them.</span>
+          <span><strong>Data notice:</strong> Only the details you enter below are sent to the AI to generate content. No personal data, no Search Console data, and no user information is included in the request. Generated articles are not stored — they exist in your browser only until you download or copy them.</span>
         </div>
 
         <div className="cg-grid">
@@ -5895,6 +6736,21 @@ ${clean}`,
             </div>
             <div className="cg-panel-bd">
               <div className="cg-field">
+                <label>What kind of page?</label>
+                <div className="cg-types" role="group" aria-label="Page type">
+                  {[["blog","Blog article","Answers a question your customers search for"],
+                    ["location","Location page","Your service in a specific town or city"],
+                    ["sector","Sector page","Your service for a specific industry"]].map(([id, title, sub]) => (
+                    <button key={id} type="button" className={`cg-type ${pageType === id ? "on" : ""}`} aria-pressed={pageType === id}
+                      onClick={() => { if (pageType !== id) { setPageType(id); setPhraseEdit(null); setReplaceOk(false); setVolume(null); } }}>
+                      <strong>{title}</strong><span>{sub}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>One page per generate.</div>
+              </div>
+              {pageType === "blog" && (
+              <div className="cg-field">
                 <label>Target keyword *</label>
                 <input placeholder={suggestedKw || "e.g. sar support services uk"}
                   value={kw} onChange={e=>setKw(e.target.value)}
@@ -5905,6 +6761,7 @@ ${clean}`,
                   </div>
                 )}
               </div>
+              )}
               <div className="cg-field">
                 <label>Business name</label>
                 <input placeholder="e.g. E2E Integration"
@@ -5918,6 +6775,262 @@ ${clean}`,
                 <input placeholder="e.g. Data protection consultancy"
                   value={biz} onChange={e=>setBiz(e.target.value)}/>
               </div>
+
+              {pageType === "location" && (<>
+                <div className="cg-field">
+                  <label>Where you're based</label>
+                  <input placeholder="Town or city, e.g. Chester" value={baseInput}
+                    onChange={e => onBaseInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && baseSuggestions.length === 1) commitBase(baseSuggestions[0]); }}/>
+                  {baseSuggestions.length > 0 && (
+                    <div className="cg-chips" style={{marginTop:".45rem"}}>
+                      {baseSuggestions.map(t => (
+                        <button key={`${t.name}${t.lat}`} type="button" className={`cg-chip ${sameTown(t, baseTown) ? "on" : ""}`} onClick={() => commitBase(t)}>
+                          {townLabel(t)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
+                    {baseTown ? `Saved for this site: ${townLabel(baseTown, findTowns(baseTown.name))}.`
+                      : baseQuery.length >= 2 && baseSuggestions.length === 0 ? `We couldn't find "${baseInput.trim()}". Check the spelling, or choose UK-wide below.`
+                      : "Asked once for this site. Used to suggest towns near you and to work out distances."}
+                  </div>
+                </div>
+
+                <div className="cg-field">
+                  <label>Service *</label>
+                  <input placeholder="e.g. GDPR support" value={locService}
+                    onChange={e => { setLocService(e.target.value); setPhraseEdit(null); setReplaceOk(false); setVolume(null); }}/>
+                </div>
+
+                <div className="cg-field">
+                  <label>How far do you work?</label>
+                  <div style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:".6rem"}}>
+                    <div className="cg-seg" role="group" aria-label="How far do you work">
+                      <button type="button" className={reach === "local" ? "on" : ""} aria-pressed={reach === "local"} onClick={() => setReach("local")}>Local</button>
+                      <button type="button" className={reach === "uk" ? "on" : ""} aria-pressed={reach === "uk"} onClick={() => setReach("uk")}>UK-wide</button>
+                    </div>
+                    {reach === "local" && (
+                      <select value={radius} onChange={e => { setRadius(Number(e.target.value)); setMoreTowns(false); }} style={{width:"auto"}} aria-label="Distance">
+                        <option value={15}>within 15 miles</option>
+                        <option value={30}>within 30 miles</option>
+                        <option value={50}>within 50 miles</option>
+                      </select>
+                    )}
+                  </div>
+                </div>
+
+                <div className="cg-field">
+                  <label>Choose a town or city</label>
+                  {reach === "local" && !baseTown ? (
+                    <div className="cg-note warn">Add where you're based above to see towns near you, or choose UK-wide.</div>
+                  ) : (
+                    <>
+                      <div style={{fontSize:".7rem",color:"var(--text3)",marginBottom:".4rem"}}>
+                        {reach === "uk" ? "Major UK cities." : `Nearest first, straight-line distance from ${townDisplayName(baseTown)}. Places of 10,000 people or more${smallTowns ? ", plus smaller towns" : ""}.`}
+                      </div>
+                      <div className="cg-chips">
+                        {lpTownList.map(({ town: t, miles }) => {
+                          const has = lpHistory.some(h => h && h.type === "location" && normPlace(h.place) === normPlace(townDisplayName(t)));
+                          return (
+                            <button key={`${t.name}${t.lat}`} type="button" className={`cg-chip ${sameTown(t, locTown) ? "on" : ""} ${has ? "has" : ""}`}
+                              aria-pressed={sameTown(t, locTown)} onClick={() => pickTown(t)}>
+                              {townDisplayName(t)}
+                              {miles != null && <em>{miles < 1 ? "your base" : `${Math.round(miles)} mi`}</em>}
+                              {has && <em>page generated</em>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {reach === "local" && (
+                        <div style={{display:"flex",gap:"1rem",marginTop:".45rem",flexWrap:"wrap"}}>
+                          {!moreTowns && lpTownList.length >= 24 && <button type="button" className="cg-linkbtn" onClick={() => setMoreTowns(true)}>Show more</button>}
+                          <button type="button" className="cg-linkbtn" onClick={() => setSmallTowns(v => !v)}>{smallTowns ? "Hide smaller towns" : "Include smaller towns"}</button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <label style={{marginTop:".7rem"}}>Or type another <span style={{fontWeight:400,color:"var(--text3)"}}>anywhere you genuinely work</span></label>
+                  <input placeholder="e.g. Oswestry" value={otherTown} onChange={e => onOtherTown(e.target.value)}/>
+                  {otherMatches.length > 1 && (
+                    <div style={{marginTop:".45rem"}}>
+                      <div className="cg-note" style={{marginBottom:".35rem"}}>There's more than one {townDisplayName(otherMatches[0])}. Which one?</div>
+                      <div className="cg-chips">
+                        {otherMatches.map(t => (
+                          <button key={`${t.name}${t.lat}`} type="button" className={`cg-chip ${sameTown(t, locTown) ? "on" : ""}`}
+                            onClick={() => { if (!sameTown(t, locTown)) resetPlace(); setLocTown(t); }}>
+                            {townLabel(t, otherMatches)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {locTown && locTown.custom && (
+                    <div className="cg-note warn" style={{marginTop:".4rem"}}>
+                      "{locTown.name}" isn't on our map, so we can't work out the distance. The page can still be written if you work there.
+                    </div>
+                  )}
+                </div>
+
+                {locTown && (
+                  <div className={`cg-gate ${lpGate.ok ? "ok" : lpGate.stop ? "stop" : ""}`}>
+                    <div>
+                      <div className="cg-gate-h">Your work in {lpPlace}</div>
+                      <div className="cg-gate-sub">A few taps. This is what makes the page different from your other town pages. Without it, Google sees the same page with the name swapped, and can demote the whole site.</div>
+                    </div>
+                    {[["worked", `Have you worked in ${lpPlace}?`, [["regular","Yes, regularly"],["few","A few jobs"],["none","Not yet"]]],
+                      ["speed", `How quickly can you get there?`, [["same","Same day"],["next","Next working day"],["remote","Remote only"]]],
+                      ["office", `Any office or staff there?`, [["yes","Yes"],["no","No"]]]].map(([q, label, opts]) => (
+                      <div key={q}>
+                        <div className="cg-q-l">{label}</div>
+                        <div className="cg-chips" role="group" aria-label={label}>
+                          {opts.map(([v, text]) => (
+                            <button key={v} type="button" className={`cg-chip ${answers[q] === v ? "on" : ""}`} aria-pressed={answers[q] === v}
+                              onClick={() => setAnswers(a => ({ ...a, [q]: v }))}>{text}</button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="cg-facts">
+                      <strong>What we already know</strong>
+                      <ul>
+                        <li>
+                          {lpMiles != null && lpMiles >= 1 ? `${lpPlace} is about ${Math.round(lpMiles)} miles from ${townDisplayName(baseTown)} in a straight line.`
+                            : lpMiles != null ? `${lpPlace} is your base.`
+                            : !baseTown ? "Add where you're based to include the distance."
+                            : `We can't work out the distance to ${lpPlace}.`}
+                        </li>
+                        <li>
+                          {lpSitePages.length
+                            ? <>Your site has {lpSitePages.length} {lpSitePages.length === 1 ? "page" : "pages"} with {lpPlace} in the address, which the new page can link to: {lpSitePages.slice(0, 3).map((p, i) => <code key={p} style={{fontSize:".7rem"}}>{i ? ", " : ""}{p}</code>)}{lpSitePages.length > 3 ? ` and ${lpSitePages.length - 3} more` : ""}</>
+                            : `No pages on your site have ${lpPlace} in the address yet.`}
+                        </li>
+                      </ul>
+                    </div>
+                    <div>
+                      <button type="button" className="cg-linkbtn"
+                        disabled={!lpGate.ok || !suggestLocationSentence({ town: locTown, base: baseTown, miles: lpMiles, answers })}
+                        onClick={() => {
+                          const s = suggestLocationSentence({ town: locTown, base: baseTown, miles: lpMiles, answers });
+                          setLocExtra(prev => prev.trim() ? `${s} ${prev.trim()}` : s);
+                        }}>Suggest a sentence from these answers</button>
+                    </div>
+                    <div className="cg-field" style={{margin:0}}>
+                      <label>Anything else only you'd know <span style={{fontWeight:400,color:"var(--text3)"}}>optional: clients, local problems, council processes</span></label>
+                      <textarea rows={3} value={locExtra} onChange={e => setLocExtra(e.target.value)}
+                        placeholder={`e.g. We support 14 schools across ${lpPlace} and attend the council's DPO forum each term.`}/>
+                    </div>
+                    <div className={`cg-status ${lpGate.ok ? "ok" : lpGate.stop ? "stop" : ""}`}>
+                      <i/>
+                      <span>{lpGate.ok
+                        ? (locExtra.trim().length >= 40 ? "Strong: your own details will make this page stand out." : "Enough to generate. A sentence of your own above makes it stronger.")
+                        : lpGate.message}</span>
+                    </div>
+                  </div>
+                )}
+              </>)}
+
+              {pageType === "sector" && (<>
+                <div className="cg-field">
+                  <label>Service *</label>
+                  <input placeholder="e.g. staff support" value={secService}
+                    onChange={e => { setSecService(e.target.value); setPhraseEdit(null); setReplaceOk(false); setVolume(null); }}/>
+                </div>
+                <div className="cg-field">
+                  <label>Which sector?</label>
+                  <div className="cg-chips">
+                    {Object.keys(SECTOR_OPTIONS).map(n => {
+                      const has = lpHistory.some(h => h && h.type === "sector" && normPlace(h.place) === normPlace(n));
+                      const on = !otherSector.trim() && sector === n;
+                      return (
+                        <button key={n} type="button" className={`cg-chip ${on ? "on" : ""} ${has ? "has" : ""}`} aria-pressed={on}
+                          onClick={() => { if (!on) { setSecExtra(""); setPhraseEdit(null); setReplaceOk(false); setVolume(null); } setSector(n); setOtherSector(""); }}>
+                          {n}{has && <em>page generated</em>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <label style={{marginTop:".7rem"}}>Or type another</label>
+                  <input placeholder="e.g. Veterinary practices" value={otherSector}
+                    onChange={e => { setOtherSector(e.target.value); setSecExtra(""); setPhraseEdit(null); setReplaceOk(false); setVolume(null); }}/>
+                </div>
+                <div className="cg-field">
+                  <label>How should we write it?</label>
+                  <div className="cg-seg" role="group" aria-label="How should we write it">
+                    <button type="button" className={secMode === "mine" ? "on" : ""} aria-pressed={secMode === "mine"} onClick={() => setSecMode("mine")}>From my experience</button>
+                    <button type="button" className={secMode === "general" ? "on" : ""} aria-pressed={secMode === "general"} onClick={() => setSecMode("general")}>From what we know</button>
+                  </div>
+                </div>
+                {lpSectorName && (secMode === "mine" ? (
+                  <div className={`cg-gate ${lpGate.ok ? "ok" : ""}`}>
+                    <div>
+                      <div className="cg-gate-h">Your experience with {lpSectorName.toLowerCase()} organisations</div>
+                      <div className="cg-gate-sub">This is what makes the page worth reading for someone in the industry, and what stops it being a generic page with the sector name swapped in.</div>
+                    </div>
+                    <ul style={{margin:0,paddingLeft:"1.1rem",fontSize:".75rem",color:"var(--text2)",lineHeight:1.6}}>
+                      {(SECTOR_OPTIONS[lpSectorName] || SECTOR_GENERIC_PROMPTS).map(p => <li key={p}>{p}</li>)}
+                    </ul>
+                    <textarea rows={4} value={secExtra} onChange={e => setSecExtra(e.target.value)}
+                      aria-label={`Your experience with ${lpSectorName.toLowerCase()} organisations`}
+                      placeholder="Clients, standards you work within, problems you solve for them…"/>
+                    <div className={`cg-status ${lpGate.ok ? "ok" : ""}`}>
+                      <i/><span>{lpGate.ok ? "Enough to generate. After generating, we check your details actually appear in the page." : lpGate.message}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="cg-gate ok">
+                    <div className="cg-gate-h">Written from general knowledge of {lpSectorName.toLowerCase()}</div>
+                    <div className="cg-gate-sub">We'll explain what {lpSectorName.toLowerCase()} organisations need from {lpService || "this service"} and the problems they typically face. To keep it honest:</div>
+                    <ul style={{margin:0,paddingLeft:"1.1rem",fontSize:".75rem",color:"var(--text2)",lineHeight:1.6}}>
+                      <li>It won't claim clients, projects or experience in the sector.</li>
+                      <li>Every regulation, standard or regulator it names is flagged for you to check before publishing.</li>
+                      <li>It will read more generally than a page written from your experience. Add your details later and regenerate.</li>
+                    </ul>
+                  </div>
+                ))}
+                {lpSitePages.length > 0 && (
+                  <div className="cg-facts">
+                    Your site has {lpSitePages.length} {lpSitePages.length === 1 ? "page" : "pages"} with "{lpSectorName.toLowerCase()}" in the address, which the new page can link to: {lpSitePages.slice(0, 3).map((p, i) => <code key={p} style={{fontSize:".7rem"}}>{i ? ", " : ""}{p}</code>)}
+                  </div>
+                )}
+                <div className="cg-note">Sector and location pages are kept separate. Combining them ("pharmaceutical staff support in Leeds") multiplies near-identical pages quickly.</div>
+              </>)}
+
+              {pageType !== "blog" && lpPlace && lpService && (
+                <div className="cg-field">
+                  <label>Search phrase</label>
+                  <input value={phraseEdit != null ? phraseEdit : lpDefaultPhrase}
+                    onChange={e => { setPhraseEdit(e.target.value); setVolume(null); }}/>
+                  <div style={{fontSize:".7rem",color:"var(--text3)",marginTop:".3rem"}}>
+                    What people type into Google. Its words go in the title, heading and first sentence, in this order.
+                  </div>
+                  <div style={{marginTop:".4rem",display:"flex",gap:".6rem",alignItems:"baseline",flexWrap:"wrap"}}>
+                    <button type="button" className="cg-linkbtn" disabled={!lpPhrase || (volume && volume.state === "loading")} onClick={checkVolume}>
+                      {volume && volume.state === "loading" && volume.phrase === lpPhrase ? "Checking…" : "Check search volume"}
+                    </button>
+                    {volume && volume.phrase === lpPhrase && volume.state !== "loading" && (
+                      <span className={`cg-note ${volume.state === "error" || volume.volume === 0 ? "warn" : ""}`}>
+                        {volume.state === "error" ? volume.message
+                          : volume.volume == null ? "Google has no search volume data for this phrase."
+                          : volume.volume === 0 ? `No measurable monthly searches. A broader phrase${pageType === "location" ? " or a larger nearby town" : ""} may be worth more.`
+                          : `About ${Number(volume.volume).toLocaleString()} searches a month in the UK.`}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{fontSize:".68rem",color:"var(--text3)",marginTop:".2rem"}}>Uses one keyword lookup from your monthly allowance, unless this phrase was checked before.</div>
+                </div>
+              )}
+
+              {pageType !== "blog" && lpExisting.length > 0 && (
+                <div className="cg-warn" style={{margin:0}}>
+                  You generated a {lpService} page for {lpPlace} on {lpExisting[lpExisting.length - 1].date}. Publishing a second one creates two pages competing for the same search, so update the existing page instead.
+                  <label style={{display:"flex",gap:".45rem",alignItems:"center",marginTop:".5rem",fontWeight:500,cursor:"pointer"}}>
+                    <input type="checkbox" checked={replaceOk} onChange={e => setReplaceOk(e.target.checked)} style={{width:"auto"}}/>
+                    This replaces that page
+                  </label>
+                </div>
+              )}
               <div className="cg-field-row">
                 <div className="cg-field">
                   <label>Tone</label>
@@ -5955,9 +7068,12 @@ ${clean}`,
                   </div>
                 )}
               </div>
-              <button className="cg-gen-btn" disabled={!kw.trim()||loading} onClick={generate}>
-                {loading ? <><span className="spinner-sm"/>{" Generating…"}</> : "✨ Generate article"}
+              <button className="cg-gen-btn" disabled={!canGenerate||loading} onClick={generate}>
+                {loading ? <><span className="spinner-sm"/>{" Generating…"}</> : pageType === "blog" ? "✨ Generate article" : "✨ Generate page"}
               </button>
+              {pageType !== "blog" && lpBlocked && !loading && (
+                <div className="cg-note">{lpBlocked}</div>
+              )}
               <div className="cg-tip">
                 {Number(wordCount) >= 2000 ? (
                   <>⏱ Long articles are written in two passes to reach the full length, so this one takes
