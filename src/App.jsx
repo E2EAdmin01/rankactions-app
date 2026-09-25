@@ -7091,6 +7091,12 @@ ${clean}`,
                       <> <button type="button" className="cg-linkbtn" style={{fontSize:".7rem"}} onClick={() => setSmallTowns(v => !v)}>{smallTowns ? "Hide smaller towns" : "Include smaller towns"}</button></>
                     )}
                   </div>
+                  {/* Required by the GeoNames licence (CC BY 4.0): credit, licence link,
+                      and a note that the data was changed (filtered). */}
+                  <div style={{fontSize:".66rem",color:"var(--text3)",marginTop:".25rem"}}>
+                    Town data from <a href="https://www.geonames.org/" target="_blank" rel="noopener noreferrer" style={{color:"inherit"}}>GeoNames</a>,{" "}
+                    <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer" style={{color:"inherit"}}>CC BY 4.0</a>, filtered to UK places of 3,000+ people.
+                  </div>
                   {generatedTowns.length > 0 && (
                     <div className="cg-note" style={{marginTop:".35rem",color:"var(--green)"}}>
                       ✓ Pages already generated: {generatedTowns.join(", ")}
