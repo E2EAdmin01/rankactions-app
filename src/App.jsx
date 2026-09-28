@@ -259,6 +259,12 @@ const CSS = `
 .tip-bubble{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:.55rem .75rem;font-size:.73rem;font-weight:400;color:var(--text);line-height:1.5;width:260px;z-index:999;pointer-events:none;opacity:0;transition:opacity .15s;box-shadow:0 4px 16px rgba(0,0,0,.3);}
 .tip-bubble::after{content:'';position:absolute;bottom:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-bottom-color:var(--s3);}
 .tip-trigger:hover .tip-bubble,.tip-trigger:focus .tip-bubble{opacity:1;pointer-events:auto;}
+/* Hidden tips are taken out of layout entirely. While invisible they still
+   counted towards the page width, so a tip near the right edge (the Conversions
+   tab) made the whole screen scroll sideways. The fade is kept by animation. */
+.tip-bubble{display:none;}
+.tip-trigger:hover .tip-bubble,.tip-trigger:focus .tip-bubble{display:block;animation:tipIn .15s ease;}
+@keyframes tipIn{from{opacity:0}to{opacity:1}}
 .benchmark{font-size:.68rem;font-weight:600;margin-left:.3rem;padding:.1rem .35rem;border-radius:4px;}
 .benchmark.good{background:var(--gdim);color:var(--green);}
 .benchmark.ok{background:var(--adim);color:var(--amber);}
@@ -463,7 +469,7 @@ const CSS = `
 .mini-fix-sub{font-size:.775rem;color:var(--text2);}
 .mini-fix-btn{background:none;border:1px solid var(--border);border-radius:6px;padding:.35rem .7rem;color:var(--blue);font-family:var(--font);font-size:.775rem;cursor:pointer;white-space:nowrap;}
 .mini-fix-btn:hover{background:var(--bdim);}
-.overlay{position:fixed;inset:0;background:rgba(7,8,15,.88);backdrop-filter:blur(6px);z-index:300;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
+.overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(7,8,15,.88);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);z-index:300;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
 .modal{background:var(--s1);border:1px solid var(--border);border-radius:16px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;}
 .modal-head{padding:1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;}
 .modal-h{font-size:1rem;font-weight:700;margin-bottom:.2rem;}
@@ -551,7 +557,7 @@ const CSS = `
 .ai-fix-counter.warn{color:var(--amber);}
 .tab-btn.locked{opacity:.45;}
 .tab-btn.locked::after{content:" 🔒";font-size:.65rem;}
-.upgrade-overlay{position:fixed;inset:0;background:rgba(7,8,15,.88);backdrop-filter:blur(6px);z-index:400;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
+.upgrade-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(7,8,15,.88);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);z-index:400;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
 .upgrade-modal{background:var(--s1);border:1px solid var(--border);border-radius:16px;width:100%;max-width:440px;padding:2rem;text-align:center;}
 .upgrade-modal-badge{display:inline-block;background:var(--green);color:#000;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:.25rem .65rem;border-radius:999px;margin-bottom:1rem;}
 .upgrade-modal h2{font-size:1.3rem;font-weight:800;letter-spacing:-.03em;margin-bottom:.5rem;}
@@ -697,7 +703,7 @@ const CSS = `
 .status-badge.disabled{background:var(--rdim);color:var(--red);}
 
 /* ── User drawer ── */
-.drawer-overlay{position:fixed;inset:0;background:rgba(7,8,15,.6);z-index:200;}
+.drawer-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(7,8,15,.6);z-index:200;}
 .drawer{position:fixed;right:0;top:0;bottom:0;width:420px;background:var(--s1);border-left:1px solid var(--border);z-index:201;overflow-y:auto;display:flex;flex-direction:column;}
 .drawer-head{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
 .drawer-close{background:none;border:none;color:var(--text3);font-size:1.3rem;cursor:pointer;padding:0;line-height:1;}
@@ -722,7 +728,7 @@ const CSS = `
 .admin-refresh:hover{border-color:var(--blue);color:var(--blue);}
 
 /* ── CRO Modal ── */
-.cro-overlay{position:fixed;inset:0;background:rgba(7,8,15,.88);backdrop-filter:blur(6px);z-index:300;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
+.cro-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(7,8,15,.88);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);z-index:300;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
 .cro-modal{background:var(--s1);border:1px solid var(--border);border-radius:16px;width:100%;max-width:580px;max-height:85vh;overflow-y:auto;display:flex;flex-direction:column;}
 .cro-modal-head{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;position:sticky;top:0;background:var(--s1);z-index:1;}
 .cro-modal-title{font-size:.95rem;font-weight:700;}
@@ -840,7 +846,7 @@ const CSS = `
 @media(max-width:900px){.links-tracker-cols{grid-template-columns:1fr 1fr;}.links-opp-grid{grid-template-columns:1fr;}}
 
 /* ── GSC Site Picker ── */
-.site-picker-overlay{position:fixed;inset:0;background:rgba(7,8,15,.88);backdrop-filter:blur(6px);z-index:400;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
+.site-picker-overlay{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(7,8,15,.88);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);z-index:400;display:flex;align-items:center;justify-content:center;padding:1.5rem;}
 .site-picker-modal{background:var(--s1);border:1px solid var(--border);border-radius:16px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;}
 .site-picker-head{padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);}
 .site-picker-title{font-size:.95rem;font-weight:700;margin-bottom:.25rem;}
@@ -870,8 +876,8 @@ const CSS = `
 .cl-formFieldInput:focus{border-color:var(--blue)!important;}
 
 /* ── Onboarding Tour ── */
-.tour-overlay{position:fixed;inset:0;z-index:10000;pointer-events:none;}
-.tour-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:10000;transition:opacity .3s;}
+.tour-overlay{position:fixed;top:0;right:0;bottom:0;left:0;z-index:10000;pointer-events:none;}
+.tour-backdrop{position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.65);z-index:10000;transition:opacity .3s;}
 .tour-spotlight{position:fixed;z-index:10001;border-radius:10px;box-shadow:0 0 0 9999px rgba(0,0,0,.65);pointer-events:none;transition:all .35s ease;}
 .tour-tooltip{position:fixed;z-index:10002;background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:1.25rem 1.5rem;max-width:340px;box-shadow:0 16px 48px rgba(0,0,0,.5);pointer-events:all;animation:tourFadeIn .3s ease;}
 .tour-tooltip-title{font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:.5rem;display:flex;align-items:center;gap:.5rem;}
@@ -909,6 +915,8 @@ const CSS = `
 .main-area img,.main-area video,.main-area iframe,.main-area svg{max-width:100%;}
 .main-area table{display:block;max-width:100%;overflow-x:auto;}
 .kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr));}
+.plan-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+.plan-wrap{padding:1.25rem 1rem;}
 /* Grid cells may shrink below their content's natural width, so text wraps
    instead of pushing the page sideways. */
 .main-area [style*="display: grid"]>*{min-width:0;}
@@ -926,6 +934,12 @@ const CSS = `
 @media(max-width:600px){
 .main-area [style*="grid-template-columns: repeat(3"],.main-area [style*="grid-template-columns: repeat(4"],.main-area [style*="grid-template-columns: repeat(5"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
 .main-area [style*="grid-template-columns: 1fr 1fr"],.main-area [style*="grid-template-columns: 2fr 1fr"],.main-area [style*="grid-template-columns: 320px 1fr"]{grid-template-columns:minmax(0,1fr)!important;}
+.plan-grid{grid-template-columns:minmax(0,1fr);}
+/* Page Audit score row: the three score rings wrap as needed and the
+   Critical / Warnings / Passed counts take a full row underneath. */
+.main-area [style*="grid-template-columns: auto auto auto 1fr"]{display:flex!important;flex-wrap:wrap;justify-content:center;}
+.main-area [style*="grid-template-columns: auto auto auto 1fr"]>:last-child{flex-basis:100%;}
+.main-area [style*="grid-template-columns: auto auto auto 1fr"] [style*="grid-template-columns: repeat(3"]{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
 }`;
 
 // ── SEO Glossary — plain English tooltips for non-technical users ──
@@ -2759,6 +2773,20 @@ export default function RankActions() {
           }
           // Check admin flag
           if (data.isAdmin) setIsAdminFlag(true);
+          // ── Restore the Google connection on a new device ──────────────
+          // The connection belongs to the account: the worker holds the Google
+          // tokens against the Clerk user. This device only knew it was
+          // connected through localStorage, so a phone or a fresh browser opened
+          // on the "connect your site" screen even though nothing was wrong.
+          // The fresh-OAuth path stores the same id (the Clerk user id).
+          if (data.googleConnected && !localStorage.getItem("rankactions_userId")) {
+            localStorage.setItem("rankactions_userId", clerkId);
+            localStorage.setItem("rankactions_plan_chosen", "1");
+            setShowPlan(false);
+            setUserId(clerkId);
+            setIsConnected(true);
+            setScreen(s => (s === "onboarding" ? "dashboard" : s));
+          }
           // ── Restore the site list from the server ──────────────────────
           // The server profile is the durable copy; localStorage is a cache. On a
           // new browser (or after clearing site data) the cache is empty and this
