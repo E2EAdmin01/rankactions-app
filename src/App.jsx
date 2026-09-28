@@ -4,7 +4,7 @@ import {
   useUser, useClerk, SignedIn, SignedOut
 } from "@clerk/clerk-react";
 import { sanitizeAiHtml, sanitizeAiPreview, stripAllHtml } from "./utils/sanitize";
-import { loadUserData, saveUserData, setUserDataTokenGetter, isPlaceholderSite } from "./utils/userData";
+import { loadUserData, saveUserData, appendUserData, mergeUserData, setUserDataTokenGetter, isPlaceholderSite } from "./utils/userData";
 import { exportAuditPdf } from "./utils/exportAuditPdf";
 import { exportReportPdf } from "./utils/exportReportPdf";
 
@@ -891,7 +891,42 @@ const CSS = `
 .tour-arrow.top{top:-7px;left:24px;border-bottom:none;border-right:none;}
 .tour-arrow.bottom{bottom:-7px;left:24px;border-top:none;border-left:none;}
 .tour-step-num{background:var(--green);color:#000;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:800;flex-shrink:0;}
-@keyframes tourFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}`;
+@keyframes tourFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+/* Phones and small tablets. The sidebar becomes a drawer opened from the top
+   bar, and long words, URLs and tables wrap or scroll inside their own box
+   instead of pushing the page sideways. */
+.nav-toggle{display:none;}
+.sidebar-scrim{display:none;}
+@media(max-width:900px){
+.sidebar{position:fixed;top:0;left:0;bottom:0;width:260px;max-width:82vw;z-index:1000;overflow-y:auto;transform:translateX(-100%);transition:transform .2s ease;visibility:hidden;}
+.sidebar.open{transform:none;visibility:visible;box-shadow:0 0 40px rgba(0,0,0,.35);}
+.sidebar-scrim{display:block;position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(0,0,0,.45);z-index:999;}
+.nav-toggle{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1.2rem;line-height:1;cursor:pointer;font-family:var(--font);}
+.topbar{padding:.6rem 1rem;flex-wrap:wrap;gap:.5rem;}
+.topbar-right{flex-wrap:wrap;gap:.4rem;justify-content:flex-end;}
+.content{padding:1rem;}
+.main-area{overflow-wrap:break-word;}
+.main-area img,.main-area video,.main-area iframe,.main-area svg{max-width:100%;}
+.main-area table{display:block;max-width:100%;overflow-x:auto;}
+.kpi-strip{grid-template-columns:repeat(2,minmax(0,1fr));}
+/* Grid cells may shrink below their content's natural width, so text wraps
+   instead of pushing the page sideways. */
+.main-area [style*="display: grid"]>*{min-width:0;}
+.main-area input:not([type=checkbox]):not([type=radio]),.main-area select,.main-area textarea{max-width:100%;}
+/* Tooltips open as a panel along the bottom of the screen instead of beside
+   the icon, where a 260px bubble runs off the edge. */
+.tip-bubble{display:none;}
+.tip-trigger:hover .tip-bubble,.tip-trigger:focus .tip-bubble{display:block;position:fixed;top:auto;bottom:1rem;left:1rem;right:1rem;width:auto;transform:none;}
+.tip-bubble::after{display:none;}
+.tabs-row{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
+.tabs-row .tab-btn{flex-shrink:0;white-space:nowrap;margin-bottom:0;}
+}
+/* Phones: the inline grids built for desktop drop to two columns, or one for
+   side-by-side panels and paired form fields. Desktop layouts are untouched. */
+@media(max-width:600px){
+.main-area [style*="grid-template-columns: repeat(3"],.main-area [style*="grid-template-columns: repeat(4"],.main-area [style*="grid-template-columns: repeat(5"]{grid-template-columns:repeat(2,minmax(0,1fr))!important;}
+.main-area [style*="grid-template-columns: 1fr 1fr"],.main-area [style*="grid-template-columns: 2fr 1fr"],.main-area [style*="grid-template-columns: 320px 1fr"]{grid-template-columns:minmax(0,1fr)!important;}
+}`;
 
 // ── SEO Glossary — plain English tooltips for non-technical users ──
 const SEO_TIPS = {
@@ -2486,6 +2521,11 @@ export default function RankActions() {
   const [addingSite,   setAddingSite]   = useState(false);
   const [newSiteInput, setNewSiteInput] = useState("");
   const [siteOpen,     setSiteOpen]     = useState(false);
+  // Phone navigation drawer. Only has an effect below 900px, where the sidebar
+  // is hidden until this is true.
+  const [navOpen,      setNavOpen]      = useState(false);
+  // Name of the prospect just added, so its button can say where it went.
+  const [prospectAdded, setProspectAdded] = useState(null);
   const [activeTab,    setActiveTab]    = useState("Overview");
   // currentView toggles between the portfolio dashboard (Agency+ feature) and
   // the single-site experience. The default is set in a separate effect once
@@ -2936,6 +2976,11 @@ export default function RankActions() {
     return () => { cancelled = true; };
   }, [siteData, selectedSite]);
 
+  // Site whose completed actions have been read and applied. Until it matches
+  // selectedSite, the persist effect below writes nothing: before this, opening
+  // a site could save the previous site's list, or an empty one, over it.
+  const doneLoadedSite = useRef(null);
+
   // ── Reload per-site state when site changes ─────────────────
   useEffect(() => {
     if (!selectedSite) return;
@@ -2962,6 +3007,7 @@ export default function RankActions() {
       for (const id of migrated) migratedMeta[id] = loadedMeta[id] || { ts: null, kw: null, type: null };
       setDoneFixes(new Set(migrated));
       setDoneMeta(migratedMeta);
+      doneLoadedSite.current = site;
       // Persist back if ids changed OR the stored shape was still legacy.
       const wasLegacy = (Array.isArray(rawDone) ? rawDone : []).some(e => typeof e === "string");
       if (wasLegacy ||
@@ -3024,9 +3070,19 @@ export default function RankActions() {
     return () => { cancelled = true; };
   }, [selectedSite]);
 
+  // ── Phone menu: Escape closes it, and it never stays open behind a desktop layout
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e) => { if (e.key === "Escape") setNavOpen(false); };
+    const onResize = () => { if (window.innerWidth > 900) setNavOpen(false); };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("resize", onResize); };
+  }, [navOpen]);
+
   // ── Persist doneFixes whenever they change ──────────────────
   useEffect(() => {
-    if (!selectedSite) return;
+    if (!selectedSite || doneLoadedSite.current !== selectedSite) return;
     // saveUserData writes localStorage immediately AND the server (debounced).
     saveUserData(selectedSite, 'done', serialiseDoneRecords(doneFixes, doneMeta));
   }, [doneFixes, doneMeta, selectedSite]);
@@ -3039,6 +3095,9 @@ export default function RankActions() {
   // Previously it matched immediately and returned early, which was harmless
   // while the data was local-only but would skip the server read entirely.
   const assistLoadedSite = useRef(null);
+  // Set once the server copy for that site has been applied; the persist
+  // effects wait for it so the local cache can never be saved over it.
+  const assistSyncedSite = useRef(null);
   useEffect(() => {
     if (!selectedSite) return;
     if (assistLoadedSite.current === selectedSite) return;
@@ -3066,6 +3125,7 @@ export default function RankActions() {
       else if (localDone.size > 0) saveUserData(site, 'assist_done', [...localDone]);
       if (Array.isArray(rawVisited)) setSproutVisitedKeys(new Set(rawVisited));
       else if (localVisited.size > 0) saveUserData(site, 'assist_visited', [...localVisited]);
+      assistSyncedSite.current = site;
     })();
     return () => { cancelled = true; };
   }, [selectedSite]);
@@ -3076,11 +3136,11 @@ export default function RankActions() {
   // writes the value straight back — idempotent, and the same behaviour the
   // `done` type has had since it moved server-side.
   useEffect(() => {
-    if (!selectedSite || assistLoadedSite.current !== selectedSite) return;
+    if (!selectedSite || assistSyncedSite.current !== selectedSite) return;
     saveUserData(selectedSite, 'assist_done', [...sproutDoneKeys]);
   }, [sproutDoneKeys, selectedSite]);
   useEffect(() => {
-    if (!selectedSite || assistLoadedSite.current !== selectedSite) return;
+    if (!selectedSite || assistSyncedSite.current !== selectedSite) return;
     saveUserData(selectedSite, 'assist_visited', [...sproutVisitedKeys]);
   }, [sproutVisitedKeys, selectedSite]);
 
@@ -4068,7 +4128,9 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
   const Sidebar = () => {
     const isAgencyOrEnterprise = plan === "agency" || plan === "enterprise";
     return (
-    <div className="sidebar">
+    <>
+    {navOpen && <div className="sidebar-scrim" onClick={()=>setNavOpen(false)} aria-hidden="true"/>}
+    <div className={`sidebar ${navOpen?"open":""}`} id="app-sidebar">
       <div className="sidebar-logo">Rank<em>Actions</em></div>
       <div className="sidebar-nav">
         {[
@@ -4094,6 +4156,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           <div key={n.id} className={`nav-item ${isActive?"active":""}`}
             data-tour={`nav-${n.id}`}
             onClick={()=>{
+              setNavOpen(false);
               if (n.id === "portfolio") {
                 setCurrentView("portfolio");
                 setArrivedFromPortfolio(false);
@@ -4117,10 +4180,14 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         );})}
       </div>
     </div>
+    </>
   );};
 
   const TopBar = () => (
     <div className="topbar">
+      <div style={{display:"flex",alignItems:"center",gap:".5rem",minWidth:0}}>
+      <button className="nav-toggle" aria-label={navOpen?"Close menu":"Open menu"} aria-expanded={navOpen} aria-controls="app-sidebar"
+        onClick={e=>{e.stopPropagation();setNavOpen(o=>!o);}}>☰</button>
       <div className="site-selector" data-tour="site-selector">
         <div className="site-btn" onClick={e=>{e.stopPropagation();setSiteOpen(p=>!p);setAddingSite(false);}}>
           <span>🌐</span><span>{displaySite(selectedSite)}</span><span style={{color:"var(--text3)",fontSize:"0.7rem"}}>▼</span>
@@ -4172,6 +4239,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
             )}
           </div>
         )}
+      </div>
       </div>
       <div className="topbar-right">
         {dataLoading  ? <span className="topbar-badge demo">⏳ Fetching…</span>
@@ -4336,6 +4404,36 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     const doneCount = total - remaining.length;
     const connected = !!siteData;
     const nextTask = remaining[0] || null;
+    // Too little search data to judge the site yet (new, or only just added to
+    // Search Console). "Nothing to fix" would be misleading then.
+    const tooNew = connected && (siteData?.keywords?.length || 0) < 10;
+    const goTo = (scr) => { setSproutOpen(false); setCurrentView("site"); setScreen(scr); };
+    const nextSteps = (
+      <div style={{marginTop:".85rem", display:"flex", flexDirection:"column", gap:".4rem", textAlign:"left"}}>
+        <div style={{fontSize:".78rem", fontWeight:600, color:"var(--text2)"}}>There's still plenty you can do to grow:</div>
+        {[["strategy","🗺 Plan your content"],["content","✍ Write a new page"],["audit","🔍 Audit a page"]].map(([scr,label]) => (
+          <button key={scr} onClick={()=>goTo(scr)}
+            style={{background:"var(--s2)", border:"1px solid var(--border)", borderRadius:8, padding:".5rem .7rem", color:"var(--text)", fontSize:".8rem", fontWeight:600, cursor:"pointer", fontFamily:"inherit", textAlign:"left"}}>
+            {label} →
+          </button>
+        ))}
+      </div>
+    );
+    // First steps for a site Google hasn't seen much of. Collapsed by default.
+    const newSiteChecklist = (
+      <details style={{marginTop:".85rem", textAlign:"left", fontSize:".78rem", color:"var(--text2)", lineHeight:1.5}}>
+        <summary style={{cursor:"pointer", fontWeight:600, color:"var(--text)"}}>New site? Set these up first</summary>
+        <ol style={{margin:".5rem 0 0", paddingLeft:"1.1rem", display:"flex", flexDirection:"column", gap:".35rem"}}>
+          <li>Add your site to <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer">Google Search Console</a>. Choose <strong>Domain</strong> and add the DNS record it gives you.</li>
+          <li>Submit your sitemap in Search Console under <strong>Sitemaps</strong> (usually yoursite/sitemap.xml).</li>
+          <li>Use <strong>URL Inspection</strong> on your homepage, then <strong>Request indexing</strong>.</li>
+          <li>If customers visit you or you cover an area, set up your <a href="https://business.google.com" target="_blank" rel="noopener noreferrer">Google Business Profile</a>.</li>
+          <li>Add <a href="https://www.bing.com/webmasters" target="_blank" rel="noopener noreferrer">Bing Webmaster Tools</a>. It can import your site from Search Console.</li>
+          <li>Open yoursite/robots.txt and check it isn't blocking Google.</li>
+        </ol>
+        <div style={{marginTop:".5rem", color:"var(--text3)"}}>New sites usually take a few weeks to show search data. Your weekly fixes start as soon as there's enough.</div>
+      </details>
+    );
 
     if (sproutDismissed) return null;
 
@@ -4357,7 +4455,7 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
           {connected && remaining.length > 0
             ? <span>{remaining.length} to do this week</span>
             : connected
-            ? <span>All caught up</span>
+            ? <span>{tooNew ? "Getting started" : "No fixes this week"}</span>
             : <span>RankActions Assist</span>}
         </button>
       );
@@ -4368,8 +4466,9 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
       <div style={{
         position:"fixed", right:"1.5rem", bottom:"5rem", zIndex:10000,
         width:"340px", maxWidth:"calc(100vw - 3rem)",
+        maxHeight:"calc(100vh - 7rem)",
         background:"var(--s1)", border:"1px solid var(--border)", borderRadius:16,
-        boxShadow:"0 10px 34px rgba(0,0,0,.28)", overflow:"hidden",
+        boxShadow:"0 10px 34px rgba(0,0,0,.28)", overflowX:"hidden", overflowY:"auto",
       }}>
         {/* Header */}
         <div style={{display:"flex", alignItems:"center", gap:".7rem", padding:".9rem 1rem", background:"#0d0d0d"}}>
@@ -4393,16 +4492,27 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
                 style={{marginTop:".9rem", width:"100%", background:"var(--green)", color:"#000", border:"none", borderRadius:8, padding:".6rem", fontWeight:700, fontSize:".84rem", cursor:"pointer", fontFamily:"inherit"}}>
                 Connect my site
               </button>
+              {newSiteChecklist}
+            </div>
+          ) : remaining.length === 0 && tooNew ? (
+            <div style={{textAlign:"center", padding:".5rem 0"}}>
+              <div style={{fontSize:".95rem", fontWeight:700, marginBottom:".35rem"}}>Your site is still new to Google</div>
+              <div style={{fontSize:".82rem", color:"var(--text3)", lineHeight:1.55}}>
+                There isn't enough search data yet to spot problems. That's normal for the first few weeks.
+              </div>
+              {newSiteChecklist}
+              {nextSteps}
             </div>
           ) : remaining.length === 0 ? (
             <div style={{textAlign:"center", padding:".5rem 0"}}>
-              <div style={{fontSize:".95rem", fontWeight:700, marginBottom:".35rem"}}>You're all caught up ✓</div>
+              <div style={{fontSize:".95rem", fontWeight:700, marginBottom:".35rem"}}>No technical fixes this week ✓</div>
               <div style={{fontSize:".82rem", color:"var(--text3)", lineHeight:1.55}}>
                 {doneCount > 0
-                  ? `Nice work — that's ${doneCount} sorted this week. This is exactly what a healthy site looks like.`
-                  : "Your site's in good shape this week. Nothing needs doing right now."}
-                {" "}I'll have a fresh check for you next week.
+                  ? `Nice work — that's ${doneCount} sorted this week.`
+                  : "Nothing on your pages needs fixing right now."}
+                {" "}I'll check again next week.
               </div>
+              {nextSteps}
               {doneCount > 0 && (
                 <button onClick={sproutReset}
                   style={{marginTop:".9rem", background:"transparent", border:"none", color:"var(--blue)", fontSize:".76rem", fontWeight:600, cursor:"pointer", fontFamily:"inherit"}}>
@@ -6223,10 +6333,31 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     // The whole stored profile, so saving one field never wipes another.
     // Business name and base town share the one `site_profile` record.
     const savedProfileRef = useRef({});
+    // Fields changed on this page since the site was opened. Laid over the
+    // stored profile when it arrives, so a slow read can't undo them.
+    const sessionPatchRef = useRef({});
+    // A null serviceScopes key removes that service's text; other fields are
+    // replaced whole. Same rule as mergeUserData.
+    const patchProfile = (base, patch) => {
+      const out = { ...base };
+      for (const [k, v] of Object.entries(patch)) {
+        if (k === "serviceScopes" && v && typeof v === "object") {
+          const m = { ...(out.serviceScopes || {}) };
+          for (const [sk, sv] of Object.entries(v)) { if (sv === null) delete m[sk]; else m[sk] = sv; }
+          out.serviceScopes = m;
+        } else out[k] = v;
+      }
+      return out;
+    };
     const saveProfile = (patch) => {
-      savedProfileRef.current = { ...savedProfileRef.current, ...patch };
+      savedProfileRef.current = patchProfile(savedProfileRef.current, patch);
+      sessionPatchRef.current = patch.serviceScopes && sessionPatchRef.current.serviceScopes
+        ? { ...sessionPatchRef.current, ...patch, serviceScopes: { ...sessionPatchRef.current.serviceScopes, ...patch.serviceScopes } }
+        : { ...sessionPatchRef.current, ...patch };
       if (isPlaceholderSite(selectedSite)) return;
-      try { Promise.resolve(saveUserData(selectedSite, "site_profile", savedProfileRef.current)).catch(() => {}); } catch { /* never blocks the form */ }
+      // Only the changed fields are sent, merged onto the server copy, so a
+      // browser that hasn't read the profile yet can't wipe the rest of it.
+      try { Promise.resolve(mergeUserData(selectedSite, "site_profile", patch)).catch(() => {}); } catch { /* never blocks the form */ }
     };
 
     // Page type: blog (unchanged), location or sector. See the Location &
@@ -6262,13 +6393,13 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
     useEffect(() => {
       let cancelled = false;
       setBizName(""); savedBizNameRef.current = "";
-      savedProfileRef.current = {}; setBaseTown(null); setBaseInput("");
+      savedProfileRef.current = {}; sessionPatchRef.current = {}; setBaseTown(null); setBaseInput("");
       if (!selectedSite || isPlaceholderSite(selectedSite)) return;
       (async () => {
         try {
           const prof = await loadUserData(selectedSite, "site_profile");
           if (!cancelled && prof && typeof prof === "object") {
-            savedProfileRef.current = { ...prof };
+            savedProfileRef.current = patchProfile(prof, sessionPatchRef.current);
             setProfileTick(t => t + 1);
             const b = prof.baseTown;
             if (b && typeof b.name === "string" && Number.isFinite(b.lat) && Number.isFinite(b.lng)) {
@@ -6680,9 +6811,8 @@ Generate specific, ready-to-use form improvements. Return ONLY valid JSON:
         const key = normPlace(lpService), prev = savedProfileRef.current.serviceScopes || {};
         const text = scopeText.trim();
         if ((prev[key] || "") !== text) {
-          const next = { ...prev };
-          if (text) next[key] = text; else delete next[key];
-          saveProfile({ serviceScopes: next });
+          // Just this service; other services' text is left as stored.
+          saveProfile({ serviceScopes: { [key]: text || null } });
         }
       }
       // Same for the base town, if it was typed rather than picked.
@@ -7052,13 +7182,11 @@ ${clean}`,
 
         // Track generated content to avoid future duplication
         try {
-          const histKey = `ra_content_history_${selectedSite}`;
-          const hist = JSON.parse(localStorage.getItem(histKey) || "[]");
-          hist.push(pageType === "blog"
+          // Added to this browser's list at once (last 50 kept), then merged
+          // with the server copy so entries from other browsers are kept.
+          appendUserData(selectedSite, 'content_history', [pageType === "blog"
             ? { keyword: kw.trim(), date: new Date().toISOString().slice(0,10) }
-            : { keyword: activeKw, date: new Date().toISOString().slice(0,10), type: pageType, place: lpPlace, service: lpService, fp: pageFp });
-          localStorage.setItem(histKey, JSON.stringify(hist.slice(-50))); // keep last 50
-          saveUserData(selectedSite, 'content_history', hist.slice(-50));
+            : { keyword: activeKw, date: new Date().toISOString().slice(0,10), type: pageType, place: lpPlace, service: lpService, fp: pageFp }]);
         } catch {}
       } catch(e) {
         clearInterval(iv);
@@ -8799,11 +8927,8 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
       setLinkOpps(parsed);
       // Save to history for deduplication
       try {
-        const histKey = `ra_link_history_${selectedSite}`;
-        const hist = JSON.parse(localStorage.getItem(histKey) || "[]");
-        parsed.forEach(o => hist.push({ title: o.title, type: o.type, target: o.targets?.[0]?.name || "", date: new Date().toISOString().slice(0,10) }));
-        localStorage.setItem(histKey, JSON.stringify(hist.slice(-40))); // keep last 40
-        saveUserData(selectedSite, 'link_history', hist.slice(-40));
+        // Last 40 kept; merged with the server copy (see appendUserData).
+        appendUserData(selectedSite, 'link_history', parsed.map(o => ({ title: o.title, type: o.type, target: o.targets?.[0]?.name || "", date: new Date().toISOString().slice(0,10) })));
       } catch {}
     } catch {
       setLinkOpps([
@@ -8847,7 +8972,10 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
     const updated = [prospect, ...linkProspects];
     setLinkProspects(updated);
     saveUserData(selectedSite, 'prospects', updated);
+    setProspectAdded(domain);
+    setTimeout(() => setProspectAdded(a => (a === domain ? null : a)), 5000);
   };
+  const scrollToProspects = () => document.getElementById("links-prospect-tracker")?.scrollIntoView({behavior:"smooth"});
 
   const moveProspect = (id, newStatus) => {
     const updated = linkProspects.map(p => p.id===id ? {...p, status:newStatus} : p);
@@ -9208,11 +9336,8 @@ ${dateRule}${wordCountRule}`;
       // Save current strategy to history before replacing
       if (strategy) {
         try {
-          const histKey = `ra_strategy_history_${selectedSite}`;
-          const hist = JSON.parse(localStorage.getItem(histKey) || "[]");
-          hist.push({ topic: strategy.topic, date: strategy.createdAt?.slice(0,10) || new Date().toISOString().slice(0,10), clusters: strategy.clusters.map(c => c.keyword) });
-          localStorage.setItem(histKey, JSON.stringify(hist.slice(-20)));
-          saveUserData(selectedSite, 'strategy_history', hist.slice(-20)); // keep last 20
+          // Last 20 kept; merged with the server copy (see appendUserData).
+          appendUserData(selectedSite, 'strategy_history', [{ topic: strategy.topic, date: strategy.createdAt?.slice(0,10) || new Date().toISOString().slice(0,10), clusters: strategy.clusters.map(c => c.keyword) }]);
         } catch {}
       }
       const newStrategy = {
@@ -9364,7 +9489,7 @@ ${dateRule}${wordCountRule}`;
                   ? "We'll analyse your keyword data and suggest the best topics to build a strategy around. Or type a specific topic you want to target."
                   : "Connect Google Search Console for data-driven suggestions, or type a topic below."}
               </div>
-              <div style={{ display: "flex", gap: ".5rem", marginBottom: ".5rem" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: ".5rem", marginBottom: ".5rem" }}>
                 <input
                   type="text" placeholder="e.g. GDPR compliance, web design services, kitchen renovations..."
                   value={customTopic} onChange={e => setCustomTopic(e.target.value)}
@@ -11158,7 +11283,7 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           <div style={{fontSize:"1.3rem",fontWeight:700}}>Page SEO Audit</div>
           <div style={{fontSize:".82rem",color:"var(--text3)"}}>Enter any URL for an instant SEO + performance + AI readiness health check</div>
         </div>
-        <div style={{display:"flex",gap:".75rem",marginBottom:"1.5rem"}}>
+        <div style={{display:"flex",flexWrap:"wrap",gap:".75rem",marginBottom:"1.5rem"}}>
           <input value={url} onChange={e=>setUrl(e.target.value)} onKeyDown={e=>e.key==="Enter"&&runAudit()}
             placeholder="https://example.com/page"
             style={{flex:1,padding:".65rem 1rem",background:"var(--s1)",border:"1px solid var(--border)",borderRadius:8,color:"var(--text)",fontFamily:"var(--font)",fontSize:".85rem"}}/>
@@ -11591,9 +11716,11 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                       if (opp.targets?.[0]?.name) setLinkTemplateTarget(opp.targets[0].name);
                       document.getElementById("links-outreach-section")?.scrollIntoView({behavior:"smooth"});
                     }}>✍ Write outreach</button>
-                    <button className="links-opp-btn" onClick={()=>saveProspect(opp.targets?.[0]?.name || opp.title, opp.type)}>
-                      + Add to tracker
-                    </button>
+                    {prospectAdded === (opp.targets?.[0]?.name || opp.title)
+                      ? <button className="links-opp-btn" onClick={scrollToProspects}>✓ Added · view Prospect Tracker ↓</button>
+                      : <button className="links-opp-btn" onClick={()=>saveProspect(opp.targets?.[0]?.name || opp.title, opp.type)}>
+                          + Add to Prospect Tracker
+                        </button>}
                   </div>
                 </div>
               ))}
@@ -11646,9 +11773,11 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                     navigator.clipboard.writeText(linkTemplateOutput).catch(()=>{});
                     setCopiedEmail(true); setTimeout(()=>setCopiedEmail(false),1600);
                   }}>{copiedEmail?"✓ Copied":"📋 Copy email"}</button>
-                  <button className="links-opp-btn" onClick={()=>{saveProspect(linkTemplateTarget,"Outreach");}}>
-                    + Add to tracker
-                  </button>
+                  {prospectAdded === linkTemplateTarget
+                    ? <button className="links-opp-btn" onClick={scrollToProspects}>✓ Added · view Prospect Tracker ↓</button>
+                    : <button className="links-opp-btn" onClick={()=>{saveProspect(linkTemplateTarget,"Outreach");}}>
+                        + Add to Prospect Tracker
+                      </button>}
                   <button className="links-opp-btn" onClick={()=>{setLinkTemplateOutput("");generateOutreachEmail();}}>
                     ↻ Regenerate
                   </button>
@@ -11665,7 +11794,7 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
         </div>
 
         {/* ── Section 3: Prospect Tracker ── */}
-        <div className="links-section">
+        <div className="links-section" id="links-prospect-tracker">
           <div className="links-section-head">
             <div>
               <div className="links-section-title">Prospect Tracker</div>
@@ -11730,7 +11859,7 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           </div>
           {linkProspects.length === 0 && (
             <div style={{padding:"2rem",textAlign:"center",color:"var(--text3)",fontSize:".82rem"}}>
-              No prospects tracked yet — generate opportunities above and click "Add to tracker"
+              No prospects tracked yet — generate opportunities above and click "Add to Prospect Tracker"
             </div>
           )}
         </div>
@@ -12477,15 +12606,12 @@ Return ONLY valid JSON — no markdown:
       try {
         const existing = readStrategyCache(selectedSite);
         if (existing && existing.clusters.length > 0) {
-          const histKey = `ra_strategy_history_${selectedSite}`;
-          const hist = JSON.parse(localStorage.getItem(histKey) || "[]");
-          hist.push({
+          // Last 20 kept; merged with the server copy (see appendUserData).
+          appendUserData(selectedSite, 'strategy_history', [{
             topic: existing.topic,
             date: existing.createdAt?.slice(0, 10) || new Date().toISOString().slice(0, 10),
             clusters: (existing.clusters || []).map(c => c.keyword),
-          });
-          localStorage.setItem(histKey, JSON.stringify(hist.slice(-20)));
-          saveUserData(selectedSite, 'strategy_history', hist.slice(-20));
+          }]);
         }
       } catch {}
 
