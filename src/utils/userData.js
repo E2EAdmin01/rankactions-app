@@ -76,6 +76,9 @@ const ALLOWED_TYPES = new Set([
   // it stopped at the check above and nothing was ever stored, not even in
   // this browser.
   'site_profile',
+  // Trust checks board and the Listings helper (scope doc, 28 Sep 2026).
+  'trust_board',
+  'listings',
 ]);
 
 // Types whose saves are merged with the server copy rather than replacing it.
@@ -89,8 +92,14 @@ const APPEND_CAPS = { content_history: 50, link_history: 40, strategy_history: 2
 // Patch types are objects saved one changed field at a time. Fields listed in
 // MAP_FIELDS are maps merged key by key (a null value removes a key); every
 // other field is replaced whole.
-const PATCH_TYPES = new Set(['site_profile']);
-const MAP_FIELDS = { site_profile: new Set(['serviceScopes']) };
+const PATCH_TYPES = new Set(['site_profile', 'trust_board', 'listings']);
+// trust_board.cards and listings.items are saved one card or listing at a
+// time, so two devices changing different cards both keep their changes.
+const MAP_FIELDS = {
+  site_profile: new Set(['serviceScopes']),
+  trust_board: new Set(['cards']),
+  listings: new Set(['items']),
+};
 
 // ── localStorage key (matches existing convention used pre-migration) ──
 const localKey = (site, type) => {

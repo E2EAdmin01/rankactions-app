@@ -940,6 +940,86 @@ const CSS = `
 .main-area [style*="grid-template-columns: auto auto auto 1fr"]{display:flex!important;flex-wrap:wrap;justify-content:center;}
 .main-area [style*="grid-template-columns: auto auto auto 1fr"]>:last-child{flex-basis:100%;}
 .main-area [style*="grid-template-columns: auto auto auto 1fr"] [style*="grid-template-columns: repeat(3"]{grid-template-columns:repeat(3,minmax(0,1fr))!important;}
+}
+/* ── Trust checks board (Page Audit tab) ── */
+.audit-tabs{display:flex;gap:.25rem;border-bottom:1px solid var(--border);padding:0 2rem;margin-top:1.25rem;overflow-x:auto;scrollbar-width:none;}
+.tb{padding:1.5rem 2rem;max-width:1100px;}
+.tb h2{font-size:1.15rem;font-weight:700;color:var(--text);}
+.tb-head{display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap;margin-bottom:1rem;}
+.tb-intro{flex:1;min-width:0;}
+.tb-intro p{color:var(--text2);font-size:.88rem;line-height:1.55;margin-top:.3rem;max-width:68ch;}
+.tb-scan{display:flex;flex-direction:column;align-items:flex-end;gap:.4rem;}
+.tb-row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem;}
+.tb-chip{font-size:.8rem;color:var(--text2);background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:.35rem .6rem;}
+.tb-chip strong{color:var(--text);}
+.tb-btn{display:inline-flex;align-items:center;gap:.4rem;border-radius:8px;padding:.45rem .85rem;font-size:.82rem;font-weight:600;cursor:pointer;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-family:var(--font);text-decoration:none;}
+.tb-btn:hover{border-color:var(--text3);}
+.tb-btn.primary{background:var(--blue);border-color:var(--blue);color:#fff;}
+.tb-btn.small{padding:.28rem .6rem;font-size:.76rem;}
+.tb-btn[disabled]{opacity:.6;cursor:wait;}
+.tb-faint{color:var(--text3);font-size:.78rem;}
+.tb-muted{color:var(--text2);font-size:.82rem;line-height:1.5;}
+.tb-empty{display:flex;gap:.6rem;align-items:center;color:var(--text2);font-size:.88rem;padding:1.25rem 0;}
+.tb-error{background:var(--rdim);color:var(--text);border-radius:10px;padding:.7rem .9rem;font-size:.85rem;margin-bottom:1rem;}
+.tb-spin{width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--blue);border-radius:50%;display:inline-block;animation:tbspin .8s linear infinite;flex-shrink:0;}
+@keyframes tbspin{to{transform:rotate(360deg)}}
+.tb-start{background:var(--bdim);border:1px solid rgba(77,123,255,.35);border-radius:14px;padding:1rem 1.1rem;margin-bottom:1.1rem;}
+.tb-start h3{font-size:1rem;font-weight:700;color:var(--text);}
+.tb-start p{font-size:.88rem;color:var(--text2);margin-top:.2rem;}
+.tb-start p strong{color:var(--text);}
+.tb-start ol{margin:.5rem 0 .2rem 1.2rem;font-size:.86rem;color:var(--text);}
+.tb-start li{margin:.2rem 0;}
+.tb-snippet{font-family:var(--mono);font-size:.76rem;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:.55rem .65rem;margin:.45rem 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text);}
+.tb-actions{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-top:.6rem;}
+.tb-lane{border:1px solid var(--border);border-radius:14px;background:var(--s1);overflow:hidden;}
+.tb-lane-head{display:flex;align-items:center;gap:.75rem;padding:.9rem 1.1rem;}
+.tb-lane-head > div:first-child{flex:1;min-width:0;}
+.tb-lane-title{font-weight:700;font-size:1rem;color:var(--text);}
+.tb-meter{width:120px;height:6px;border-radius:99px;background:var(--s3);overflow:hidden;}
+.tb-meter i{display:block;height:100%;background:var(--green);border-radius:99px;}
+.tb-count{font-size:.8rem;color:var(--text2);white-space:nowrap;}
+.tb-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem;padding:0 1.1rem 1.1rem;}
+.tb-col{background:var(--s2);border-radius:10px;padding:.6rem;min-width:0;}
+.tb-col-head{display:flex;justify-content:space-between;font-size:.78rem;font-weight:600;color:var(--text2);padding:.2rem .3rem .55rem;}
+.tb-none{padding:.3rem;}
+.tb-card{background:var(--s1);border:1px solid var(--border);border-radius:9px;padding:.65rem .7rem;margin-bottom:.5rem;}
+.tb-card.open{border-color:var(--blue);}
+.tb-card-head{display:flex;justify-content:space-between;gap:.5rem;align-items:flex-start;width:100%;background:none;border:0;padding:0;cursor:pointer;text-align:left;font-family:var(--font);color:var(--text);}
+.tb-card-name{font-weight:600;font-size:.86rem;line-height:1.3;}
+.tb-card-ev{font-size:.79rem;color:var(--text2);margin-top:.35rem;line-height:1.45;}
+.tb-card-detail{margin-top:.6rem;border-top:1px solid var(--border);padding-top:.6rem;}
+.tb-h{font-size:.72rem;font-weight:600;color:var(--text3);margin:.5rem 0 .15rem;}
+.tb-h:first-child{margin-top:0;}
+.tb-status{font-size:.76rem;color:var(--text3);}
+.tb-status select{background:var(--s2);border:1px solid var(--border2);border-radius:7px;padding:.25rem .35rem;font-size:.76rem;color:var(--text);font-family:var(--font);}
+.tb-hint{font-size:.74rem;color:var(--text3);margin-top:.45rem;}
+.tb-upgrade{font-size:.78rem;color:var(--amber);margin-top:.5rem;}
+.tb-pill{font-size:.7rem;font-weight:600;padding:.15rem .5rem;border-radius:999px;white-space:nowrap;flex-shrink:0;}
+.tb-pill.found{background:var(--gdim);color:var(--green);}
+.tb-pill.missing,.tb-pill.mismatch{background:var(--rdim);color:var(--red);}
+.tb-pill.confirm{background:var(--adim);color:var(--amber);}
+.tb-pill.couldnt,.tb-pill.na{background:var(--s3);color:var(--text2);}
+.tb-pill.unverified{background:var(--bdim);color:var(--blue);}
+.tb-na{padding:0 1.1rem 1rem;font-size:.82rem;color:var(--text2);}
+.tb-na summary{cursor:pointer;}
+.tb-na-item{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.35rem 0 .35rem .9rem;}
+.tb-foot{margin-top:.8rem;}
+.tb-setup{padding:1.5rem 2rem;max-width:640px;}
+.tb-q{font-weight:600;font-size:.92rem;margin:1.1rem 0 .5rem;color:var(--text);}
+.tb-options{display:flex;flex-wrap:wrap;gap:.5rem;}
+.tb-opt{border:1px solid var(--border2);background:var(--s1);color:var(--text);border-radius:10px;padding:.6rem .9rem;font-size:.88rem;cursor:pointer;font-family:var(--font);}
+.tb-opt.on,.tb-opt:hover{border-color:var(--blue);background:var(--bdim);}
+.tips-switch{display:flex;align-items:center;gap:.6rem;cursor:pointer;font-size:.88rem;color:var(--text);}
+.tips-switch input{width:18px;height:18px;accent-color:var(--blue);}
+/* "Show tips" off: the ⓘ tooltips go too. Statuses, legal notes and warnings stay. */
+.gos.no-tips .tip-icon,.gos.no-tips .tip-bubble{display:none!important;}
+@media(max-width:900px){
+.audit-tabs{padding:0 1rem;}
+.tb,.tb-setup{padding:1rem;}
+.tb-cols{grid-template-columns:minmax(0,1fr);}
+.tb-head{flex-direction:column;}
+.tb-scan{align-items:flex-start;}
+.tb-meter{display:none;}
 }`;
 
 // ── SEO Glossary — plain English tooltips for non-technical users ──
@@ -2404,6 +2484,306 @@ function TownPicker({ id, labelId, placeholder, options, value, onChange }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// Trust checks (Page Audit tab). Scope: "RankActions — Trust & E-E-A-T Scope".
+// Module level, like TownPicker, so it keeps its state when App re-renders.
+// Written for someone with no technical knowledge: plain names, one clear
+// next step, no card codes on screen. The codes (B1…) stay in the code only.
+// ─────────────────────────────────────────────────────────────
+const TRUST_CARDS = [
+  { id: "B2",  name: "Your company number",            legal: true,  company: true,  why: "Customers, banks and Google use it to check you're a real, registered company." },
+  { id: "B1",  name: "Your official company name",     legal: true,  company: true,  why: "Your website must show the exact name your company is registered under, even if you trade under another name." },
+  { id: "B3",  name: "Where your company is registered", legal: true, company: true, why: "UK law asks companies to say where they're registered, for example \"Registered in England and Wales\"." },
+  { id: "B4",  name: "Your registered office address", legal: true,  company: true,  why: "The official address on the public register. If your accountant's address is your registered office, that's the one to show." },
+  { id: "B5",  name: "Your VAT number",                legal: true,  why: "If you're VAT registered, your website must show your VAT number." },
+  { id: "B6",  name: "An email address",               legal: true,  why: "Most business websites must show an email address. A contact form alone doesn't count." },
+  { id: "B7",  name: "Your business address",          legal: true,  why: "Customers trust a business they can find. Most business websites must show a real address, not just a PO Box." },
+  { id: "B8",  name: "A phone number",                 why: "A phone number makes it easier for customers to trust and reach you." },
+  { id: "B9",  name: "A privacy policy",               legal: true,  why: "If your website has a contact form or counts visitors, you need a privacy policy." },
+  { id: "B10", name: "A cookie banner that works",     legal: true,  why: "Visitors must agree before you track them, for example with Google Analytics." },
+  { id: "B11", name: "An About page",                  why: "Saying who runs the business and how long you've traded helps visitors and Google trust you." },
+  { id: "B12", name: "Terms for online orders",        why: "If you sell online, customers must be able to read your terms before they order." },
+];
+const TRUST_STATUS_WORDS = { found: "Done", missing: "To add", mismatch: "Needs updating", confirm: "Please check", couldnt: "Couldn't check", unverified: "Checking", na: "Doesn't apply" };
+const TRUST_BUSINESS_TYPES = [["ltd", "Limited company"], ["llp", "LLP"], ["sole", "Sole trader"], ["partnership", "Partnership"], ["charity", "Charity or CIC"], ["other", "Something else"]];
+const TRUST_FULL_PLANS = new Set(["business", "agency", "pro", "enterprise"]);
+const JURISDICTION_WORDS = { "england-wales": "England and Wales", wales: "Wales", scotland: "Scotland", "northern-ireland": "Northern Ireland" };
+
+// "E2E INTEGRATION LIMITED" → "E2E Integration Limited"
+function titleCaseCompany(name) {
+  return String(name || "").toLowerCase().replace(/\b([a-z])([a-z]*)/g, (m, a, b) => a.toUpperCase() + b)
+    .replace(/\b(Ltd|Llp|Plc|Cic)\b/g, w => w.toUpperCase().replace("LTD", "Ltd"))
+    .replace(/\b([A-Za-z]*\d[A-Za-z\d]*)\b/g, w => w.toUpperCase());
+}
+// The ready-made footer line, built only from Companies House's own record.
+function trustFooterLine(ch) {
+  if (!ch || !ch.found || !ch.name) return null;
+  return `${titleCaseCompany(ch.name)}. Registered in ${JURISDICTION_WORDS[ch.jurisdiction] || "England and Wales"}, company number ${ch.number}. Registered office: ${ch.address || "[your registered office address]"}.`;
+}
+function trustMailto(line) {
+  return "mailto:?subject=" + encodeURIComponent("Please add this to our website footer")
+    + "&body=" + encodeURIComponent("Hi,\n\nPlease add this line to the footer (the bottom) of every page on our website. UK law asks limited companies to show these details:\n\n" + line + "\n\nThanks");
+}
+
+function TrustBoard({ site, plan, showTips }) {
+  const [board, setBoard] = useState(null);       // saved: { businessType, vatRegistered, cards, lastScan }
+  const [scan, setScan] = useState(null);         // latest scan result from the worker
+  const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const loadedFor = useRef(null);
+  const canEdit = TRUST_FULL_PLANS.has(plan);
+  const placeholder = isPlaceholderSite(site);
+
+  // Load the saved board for this site, then show its last scan straight away.
+  useEffect(() => {
+    if (!site || placeholder) { setLoading(false); return; }
+    let cancelled = false;
+    loadedFor.current = site;
+    setLoading(true); setError(""); setOpen(null); setScan(null);
+    loadUserData(site, "trust_board").then(b => {
+      if (cancelled || loadedFor.current !== site) return;
+      const saved = b && typeof b === "object" ? b : {};
+      setBoard(saved);
+      if (saved.lastScan && saved.lastScan.cards) setScan(saved.lastScan);
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [site, placeholder]);
+
+  const save = (patch) => {
+    setBoard(prev => {
+      const next = { ...(prev || {}), ...patch };
+      if (patch.cards) {
+        const cards = { ...((prev && prev.cards) || {}) };
+        for (const [k, v] of Object.entries(patch.cards)) { if (v === null) delete cards[k]; else cards[k] = v; }
+        next.cards = cards;
+      }
+      return next;
+    });
+    if (canEdit || patch.businessType !== undefined || patch.vatRegistered !== undefined || patch.lastScan) {
+      Promise.resolve(mergeUserData(site, "trust_board", patch)).catch(() => {});
+    }
+  };
+
+  const runScan = async (refresh, settings) => {
+    const b = { ...(board || {}), ...(settings || {}) };
+    setScanning(true); setError("");
+    try {
+      const res = await authFetch(`${WORKER_URL}/api/trust-scan`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ site, businessType: b.businessType, vatRegistered: b.vatRegistered, refresh: !!refresh }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(data.error || "We couldn't check your site just now. Please try again in a few minutes."); return; }
+      if (loadedFor.current !== site) return;
+      setScan(data);
+      save({ ...(settings || {}), lastScan: data });
+    } catch {
+      setError("We couldn't reach RankActions just now. Check your internet connection and try again.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const chooseType = (businessType, vatRegistered) => {
+    save({ businessType, vatRegistered });
+    runScan(true, { businessType, vatRegistered });
+  };
+
+  if (placeholder) return <div className="tb-empty">Connect your website first, then come back to check it.</div>;
+  if (loading) return <div className="tb-empty"><span className="tb-spin" aria-hidden="true" /> Loading your trust checks…</div>;
+
+  // First visit: one question before the first check.
+  if (!board || !board.businessType) return <TrustSetup onDone={chooseType} />;
+
+  const cardsState = (board && board.cards) || {};
+  const results = (scan && scan.cards) || {};
+  const company = (scan && scan.ch) || null;
+  const footerLine = trustFooterLine(company);
+  const rows = TRUST_CARDS.map(def => {
+    const r = results[def.id] || null;
+    const saved = cardsState[def.id] || {};
+    const userNa = saved.status === "na";
+    const autoNa = r && r.result === "na";
+    const confirmed = r && r.result === "confirm" && saved.confirmedAt;
+    const done = r && (r.result === "found" || confirmed);
+    const column = userNa || autoNa ? "na" : done ? "done" : saved.status === "doing" ? "doing" : "todo";
+    return { ...def, r, saved, column, confirmed };
+  });
+  const live = rows.filter(c => c.column !== "na" && c.r);
+  const doneCount = live.filter(c => c.column === "done").length;
+  const next = rows.find(c => c.column === "todo" && c.r && c.r.result !== "couldnt") || null;
+  const nextSnippet = next && footerLine && ["B1", "B2", "B3", "B4"].includes(next.id) && next.r.result !== "confirm" ? footerLine : null;
+
+  const copy = (t) => {
+    try { navigator.clipboard.writeText(t); } catch { /* clipboard blocked */ }
+    setCopied(true); setTimeout(() => setCopied(false), 2500);
+  };
+  const setStatus = (id, status) => save({ cards: { [id]: status === "todo" ? null : { ...(cardsState[id] || {}), status } } });
+  const confirmCard = (id) => save({ cards: { [id]: { status: "done", confirmedAt: new Date().toISOString().slice(0, 10) } } });
+  const markNa = (id) => save({ cards: { [id]: { status: "na", naReason: "You said this doesn't apply to you" } } });
+  const when = scan && scan.scannedAt ? new Date(scan.scannedAt) : null;
+  const whenText = when ? when.toLocaleString("en-GB", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : null;
+
+  const renderCard = (c) => {
+    const isOpen = open === c.id;
+    const pillClass = c.confirmed ? "found" : c.r ? c.r.result : "couldnt";
+    const pillText = c.confirmed ? "✓ Done" : c.r ? (c.r.result === "found" ? "✓ Done" : TRUST_STATUS_WORDS[c.r.result]) : "Not checked yet";
+    return (
+      <div key={c.id} className={`tb-card ${isOpen ? "open" : ""}`}>
+        <button className="tb-card-head" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : c.id)}>
+          <span className="tb-card-name">{c.name}</span>
+          <span className={`tb-pill ${pillClass}`}>{pillText}</span>
+        </button>
+        <div className="tb-card-ev">{c.confirmed ? `You confirmed this on ${new Date(c.saved.confirmedAt).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.` : c.r ? c.r.evidence : "We'll check this when you press Check my site again."}</div>
+        {isOpen && (
+          <div className="tb-card-detail">
+            {c.legal && <><div className="tb-h">The law</div><div className="tb-muted">UK law asks most business websites to show this. (This is guidance, not legal advice.)</div></>}
+            {showTips && c.why && <><div className="tb-h">Why it matters</div><div className="tb-muted">{c.why}</div></>}
+            {c.company && footerLine && c.column !== "done" && c.r && c.r.result !== "confirm" && (
+              <>
+                {showTips && <div className="tb-h">What to do</div>}
+                {showTips && <div className="tb-muted">Add this line to the bottom of every page (the footer):</div>}
+                <div className="tb-snippet">{footerLine}</div>
+              </>
+            )}
+            {canEdit ? (
+              <div className="tb-actions">
+                {c.r && c.r.result === "confirm" && !c.confirmed && <button className="tb-btn primary" onClick={() => confirmCard(c.id)}>Yes, this is true</button>}
+                {c.company && footerLine && c.column !== "done" && c.r && c.r.result !== "confirm" && <>
+                  <button className="tb-btn" onClick={() => copy(footerLine)}>{copied ? "✓ Copied" : "Copy the text"}</button>
+                  <a className="tb-btn" href={trustMailto(footerLine)}>Email it to my web person</a>
+                </>}
+                {c.column !== "done" && <button className="tb-btn" disabled={scanning} onClick={() => runScan(true)}>{scanning ? "Checking…" : "Check again"}</button>}
+                {c.column !== "done" && (
+                  <label className="tb-status">Status{" "}
+                    <select value={c.column === "doing" ? "doing" : "todo"} onChange={e => setStatus(c.id, e.target.value)} aria-label={`Status for ${c.name}`}>
+                      <option value="todo">To do</option><option value="doing">In progress</option>
+                    </select>
+                  </label>
+                )}
+                {c.column !== "done" && <button className="tb-btn" onClick={() => markNa(c.id)}>Doesn't apply to me</button>}
+              </div>
+            ) : (
+              <div className="tb-upgrade">Track and tick off your checks on the Business plan.</div>
+            )}
+            {c.column !== "done" && c.r && c.r.result !== "confirm" && showTips && <div className="tb-hint">This ticks itself once we find it on your website.</div>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const columns = [["todo", "To do"], ["doing", "In progress"], ["done", "Done"]];
+  const naRows = rows.filter(c => c.column === "na");
+  return (
+    <div className="tb">
+      <div className="tb-head">
+        <div className="tb-intro">
+          <h2>Does your website show you're a real, trustworthy business?</h2>
+          {showTips && <p>Customers and Google both look for signs of a genuine business: who you are, how to reach you, and proof you know your trade. Google calls this E-E-A-T. We check your website for each sign and tick it off when we find it. Some are legal requirements.</p>}
+        </div>
+        <div className="tb-scan">
+          <button className="tb-btn primary" disabled={scanning} onClick={() => runScan(true)}>{scanning ? <><span className="tb-spin" aria-hidden="true" /> Checking your site…</> : scan ? "Check my site again" : "Check my site"}</button>
+          {whenText && <span className="tb-faint">Last checked {whenText}</span>}
+        </div>
+      </div>
+      <div className="tb-row">
+        <span className="tb-chip">Your business is a: <strong>{(TRUST_BUSINESS_TYPES.find(t => t[0] === board.businessType) || [])[1] || "Limited company"}</strong></span>
+        <span className="tb-chip">VAT registered: <strong>{board.vatRegistered === true ? "Yes" : board.vatRegistered === false ? "No" : "Not sure"}</strong></span>
+        <button className="tb-btn small" onClick={() => save({ businessType: null })}>Change</button>
+      </div>
+      {error && <div className="tb-error" role="alert">{error}</div>}
+      {!scan && !scanning && !error && <div className="tb-empty">Press "Check my site" and we'll look at your website. It takes about 10 seconds.</div>}
+      {scanning && !scan && <div className="tb-empty"><span className="tb-spin" aria-hidden="true" /> Checking your website. This takes about 10 seconds…</div>}
+
+      {scan && showTips && next && (
+        <div className="tb-start">
+          <h3>Your next step</h3>
+          <p>You have {live.length - doneCount} of the essentials left. The quickest win: <strong>{next.name.charAt(0).toLowerCase() + next.name.slice(1)}</strong>.</p>
+          {nextSnippet ? (
+            <>
+              <ol><li>Copy the line below.</li><li>Paste it at the bottom (the footer) of your website, or email it to whoever updates your website.</li><li>Press "Check my site again" and we'll tick it off.</li></ol>
+              <div className="tb-snippet">{nextSnippet}</div>
+              <div className="tb-actions">
+                <button className="tb-btn primary" onClick={() => copy(nextSnippet)}>{copied ? "✓ Copied" : "Copy the text"}</button>
+                <a className="tb-btn" href={trustMailto(nextSnippet)}>Email it to my web person</a>
+                <button className="tb-btn" onClick={() => setOpen(next.id)}>Tell me more</button>
+              </div>
+            </>
+          ) : (
+            <div className="tb-actions"><button className="tb-btn primary" onClick={() => setOpen(next.id)}>Show me what to do</button></div>
+          )}
+        </div>
+      )}
+      {scan && showTips && !next && live.length > 0 && doneCount === live.length && (
+        <div className="tb-start"><h3>You've done all the essentials 🎉</h3><p>We'll keep checking. More trust checks are on the way.</p></div>
+      )}
+
+      {scan && (
+        <section className="tb-lane">
+          <div className="tb-lane-head">
+            <div><div className="tb-lane-title">Start here: the essentials</div>{showTips && <div className="tb-faint">Who you are and how to reach you. Several are legal requirements.</div>}</div>
+            <div className="tb-meter" aria-hidden="true"><i style={{ width: `${live.length ? (doneCount / live.length) * 100 : 0}%` }} /></div>
+            <div className="tb-count">{doneCount} of {live.length} done</div>
+          </div>
+          <div className="tb-cols">
+            {columns.map(([key, label]) => {
+              const list = rows.filter(c => c.column === key);
+              return (
+                <div className="tb-col" key={key}>
+                  <div className="tb-col-head"><span>{label}</span><span>{list.length}</span></div>
+                  {list.length ? list.map(renderCard) : <div className="tb-faint tb-none">Nothing here yet</div>}
+                </div>
+              );
+            })}
+          </div>
+          {naRows.length > 0 && (
+            <details className="tb-na">
+              <summary>Doesn't apply to you ({naRows.length})</summary>
+              {naRows.map(c => (
+                <div key={c.id} className="tb-na-item">
+                  <strong>{c.name}</strong> <span className="tb-faint">{c.saved.status === "na" ? c.saved.naReason : c.r && c.r.evidence}</span>
+                  {c.saved.status === "na" && canEdit && <button className="tb-btn small" onClick={() => setStatus(c.id, "todo")}>Undo</button>}
+                </div>
+              ))}
+            </details>
+          )}
+        </section>
+      )}
+      {scan && <p className="tb-faint tb-foot">More checks are coming: reviews, memberships and showing your experience.</p>}
+    </div>
+  );
+}
+
+function TrustSetup({ onDone }) {
+  const [type, setType] = useState(null);
+  return (
+    <div className="tb-setup">
+      <h2>Two quick questions before we check your website</h2>
+      <p className="tb-faint">So we only check what applies to you.</p>
+      <div className="tb-q">What kind of business is this?</div>
+      <div className="tb-options" role="group" aria-label="Business type">
+        {TRUST_BUSINESS_TYPES.map(([v, label]) => (
+          <button key={v} className={`tb-opt ${type === v ? "on" : ""}`} aria-pressed={type === v} onClick={() => setType(v)}>{label}</button>
+        ))}
+      </div>
+      {type && <>
+        <div className="tb-q">Are you VAT registered?</div>
+        <div className="tb-options" role="group" aria-label="VAT registered">
+          <button className="tb-opt" onClick={() => onDone(type, true)}>Yes</button>
+          <button className="tb-opt" onClick={() => onDone(type, false)}>No</button>
+          <button className="tb-opt" onClick={() => onDone(type, undefined)}>Not sure</button>
+        </div>
+      </>}
+    </div>
+  );
+}
+
+
 async function callClaude(userMsg, systemMsg, mode = 'standard') {
   // Facts first, the caller's role and output-format instructions last, so the
   // format rule ("return valid JSON only", "output ONLY raw HTML") stays the
@@ -2535,6 +2915,11 @@ export default function RankActions() {
   const [addingSite,   setAddingSite]   = useState(false);
   const [newSiteInput, setNewSiteInput] = useState("");
   const [siteOpen,     setSiteOpen]     = useState(false);
+  // Page Audit: "page" (today's audit) or "trust" (Trust checks).
+  const [auditTab,     setAuditTab]     = useState("page");
+  // "Show tips and explanations" (Settings). Saved on the account; cached here
+  // so the first paint matches. Missing means on.
+  const [showTips,     setShowTips]     = useState(() => { try { return localStorage.getItem("ra_show_tips") !== "0"; } catch { return true; } });
   // Phone navigation drawer. Only has an effect below 900px, where the sidebar
   // is hidden until this is true.
   const [navOpen,      setNavOpen]      = useState(false);
@@ -2773,6 +3158,10 @@ export default function RankActions() {
           }
           // Check admin flag
           if (data.isAdmin) setIsAdminFlag(true);
+          if (typeof data.showTips === "boolean") {
+            setShowTips(data.showTips);
+            try { localStorage.setItem("ra_show_tips", data.showTips ? "1" : "0"); } catch { /* storage blocked */ }
+          }
           // ── Restore the Google connection on a new device ──────────────
           // The connection belongs to the account: the worker holds the Google
           // tokens against the Clerk user. This device only knew it was
@@ -2928,6 +3317,16 @@ export default function RankActions() {
       setScreen("dashboard");
     }
   }, [isLoaded, isSignedIn, session]);
+
+  // ── "Show tips and explanations": save to the account so it follows the user
+  const saveShowTips = (on) => {
+    setShowTips(on);
+    try { localStorage.setItem("ra_show_tips", on ? "1" : "0"); } catch { /* storage blocked */ }
+    authFetch(`${WORKER_URL}/api/user/sync`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ showTips: on }),
+    }).catch(() => {});
+  };
 
   // ── Sync user data to Worker for admin panel ───────────────
   useEffect(() => {
@@ -10270,6 +10669,17 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           <div className="page-sub">Manage your account, connected sites and preferences</div>
         </div>
 
+        {/* Tips and explanations */}
+        <div style={sectionStyle}>
+          <div style={labelStyle}>Help</div>
+          <div style={{...rowStyle,borderBottom:"none"}}>
+            <label className="tips-switch">
+              <input type="checkbox" checked={showTips} onChange={e=>saveShowTips(e.target.checked)}/>
+              <span><strong>Show tips and explanations</strong><br/><span style={subStyle}>Step-by-step help, "why it matters" notes and ⓘ tips. Turn off for shorter screens. Warnings and legal notes always show.</span></span>
+            </label>
+          </div>
+        </div>
+
         {/* Account */}
         <div style={sectionStyle}>
           <div style={labelStyle}>Account</div>
@@ -14598,7 +15008,7 @@ Return ONLY valid JSON — no markdown:
   // ─────────────────────────────────────────────────────────────
   return (
     <><style>{CSS}</style>
-    <div className="gos" onClick={()=>siteOpen&&setSiteOpen(false)}>
+    <div className={`gos ${showTips ? "" : "no-tips"}`} onClick={()=>siteOpen&&setSiteOpen(false)}>
       <div className="layout">
         <Sidebar/>
         <div className="main-area">
@@ -14635,7 +15045,15 @@ Return ONLY valid JSON — no markdown:
             {screen==="strategy"   && <StrategyPlanner/>}
             {screen==="links"      && <LinkBuildingScreen/>}
             {screen==="tracker"    && <RankTracker/>}
-            {screen==="audit"      && <PageAudit/>}
+            {screen==="audit"      && (
+              <>
+                <div className="audit-tabs" role="tablist" aria-label="Page Audit">
+                  <button role="tab" aria-selected={auditTab==="page"} className={`tab-btn ${auditTab==="page"?"active":""}`} onClick={()=>setAuditTab("page")}>Page audit</button>
+                  <button role="tab" aria-selected={auditTab==="trust"} className={`tab-btn ${auditTab==="trust"?"active":""}`} onClick={()=>setAuditTab("trust")}>Trust checks</button>
+                </div>
+                {auditTab==="page" ? <PageAudit/> : <TrustBoard site={selectedSite} plan={plan} showTips={showTips}/>}
+              </>
+            )}
             {screen==="startingOut" && <StartingOutWizard/>}
             {screen==="settings"   && <SettingsScreen/>}
             {screen==="reports"    && <ReportsTab/>}
