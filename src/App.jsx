@@ -1020,6 +1020,48 @@ const CSS = `
 .tb-head{flex-direction:column;}
 .tb-scan{align-items:flex-start;}
 .tb-meter{display:none;}
+}
+/* ── Listings and Who mentions competitors ── */
+.ls-intro{max-width:70ch;margin:.3rem 0 1rem;}
+.ls-warn{background:var(--adim);border:1px solid rgba(245,166,35,.35);border-radius:10px;padding:.7rem .9rem;font-size:.85rem;margin-bottom:1rem;color:var(--text);}
+.ls-grid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:1.25rem;align-items:start;}
+.ls-panel{background:var(--s1);border:1px solid var(--border);border-radius:14px;padding:1rem 1.1rem;}
+.ls-panel h3{font-size:1rem;font-weight:700;color:var(--text);margin-bottom:.2rem;}
+.ls-field{margin-top:.7rem;}
+.ls-field label{display:flex;justify-content:space-between;gap:.5rem;flex-wrap:wrap;font-size:.74rem;font-weight:600;color:var(--text3);margin-bottom:.25rem;}
+.ls-val{display:flex;gap:.4rem;align-items:flex-start;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:.35rem .45rem;}
+.ls-val input,.ls-val textarea{flex:1;min-width:0;background:none;border:0;color:var(--text);font-family:var(--font);font-size:.84rem;resize:vertical;outline:none;}
+.ls-copy{background:none;border:0;color:var(--blue);font-size:.74rem;font-weight:600;cursor:pointer;white-space:nowrap;font-family:var(--font);padding:.15rem .2rem;}
+.ls-copy[disabled]{color:var(--text3);cursor:default;}
+.ls-lens{margin-bottom:.4rem;}
+.ls-lens .tb-opt{padding:.3rem .65rem;font-size:.78rem;}
+.ls-filter{margin-bottom:.8rem;}
+.ls-filter .tb-opt{padding:.35rem .75rem;font-size:.8rem;}
+.ls-card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:.85rem 1rem;margin-bottom:.6rem;}
+.ls-top{display:flex;gap:.6rem;align-items:flex-start;justify-content:space-between;}
+.ls-name-wrap{min-width:0;}
+.ls-name{font-weight:700;font-size:.95rem;color:var(--text);}
+.ls-cost{font-size:.7rem;color:var(--text2);border:1px solid var(--border2);border-radius:6px;padding:.05rem .4rem;margin-left:.3rem;white-space:nowrap;}
+.ls-check{display:flex;gap:.45rem;margin-top:.65rem;flex-wrap:wrap;}
+.ls-check input{flex:1 1 220px;min-width:0;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:.45rem .6rem;font-size:.82rem;color:var(--text);font-family:var(--font);}
+.ls-result{margin-top:.55rem;font-size:.82rem;padding:.55rem .65rem;border-radius:8px;background:var(--s2);color:var(--text);}
+.ls-result ul{margin:.3rem 0 0 1.1rem;}
+.ls-foot{margin-top:.4rem;text-align:right;}
+.ls-link{background:none;border:0;color:var(--text3);font-size:.74rem;cursor:pointer;text-decoration:underline;font-family:var(--font);}
+.lg-inputs{display:flex;gap:.5rem;flex-wrap:wrap;margin:.8rem 0 .2rem;align-items:center;}
+.lg-inputs input{flex:1 1 200px;min-width:0;background:var(--s2);border:1px solid var(--border2);border-radius:8px;padding:.5rem .65rem;font-size:.85rem;color:var(--text);font-family:var(--font);}
+.lg-error{margin-top:.8rem;}
+.lg-summary{margin-top:1rem;max-width:72ch;}
+.lg-group{margin-top:1.25rem;}
+.lg-group h3{font-size:.95rem;font-weight:700;color:var(--text);}
+.lg-group > .tb-muted{margin:.15rem 0 .55rem;max-width:72ch;}
+.lg-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1.7fr) auto;gap:.75rem;align-items:center;background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:.6rem .8rem;margin-bottom:.4rem;font-size:.85rem;}
+.lg-dom{font-weight:600;color:var(--text);overflow-wrap:anywhere;}
+.lg-links{color:var(--text2);font-size:.8rem;}
+@media(max-width:980px){
+.ls-grid{grid-template-columns:minmax(0,1fr);}
+.lg-row{grid-template-columns:minmax(0,1fr) auto;}
+.lg-links{grid-column:1 / -1;grid-row:2;}
 }`;
 
 // ── SEO Glossary — plain English tooltips for non-technical users ──
@@ -2577,7 +2619,9 @@ function TrustBoard({ site, plan, showTips }) {
         body: JSON.stringify({ site, businessType: b.businessType, vatRegistered: b.vatRegistered, refresh: !!refresh }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setError(data.error || "We couldn't check your site just now. Please try again in a few minutes."); return; }
+      // Only the worker's own plain messages are shown (e.g. the daily limit).
+      // Anything unexpected gets a friendly line, never "Route not found".
+      if (!res.ok) { setError(res.status === 429 && data.error ? data.error : "We couldn't check your site just now. Please try again in a few minutes."); return; }
       if (loadedFor.current !== site) return;
       setScan(data);
       save({ ...(settings || {}), lastScan: data });
@@ -2783,6 +2827,309 @@ function TrustSetup({ onDone }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// Link Building › Listings and › Who mentions competitors.
+// Scope: "Listings helper", "Listings verification and design" and "Other
+// link-building improvements". Module level so state survives re-renders.
+// ─────────────────────────────────────────────────────────────
+const LISTING_STATUS = {
+  none:      ["couldnt", "Not joined yet"],
+  submitted: ["unverified", "Signed up"],
+  verified:  ["found", "✓ Live and correct"],
+  confirmed: ["found", "✓ Live (you checked)"],
+  fix:       ["mismatch", "Needs updating"],
+  couldnt:   ["confirm", "Couldn't check"],
+  notfound:  ["missing", "Not found"],
+  notrel:    ["couldnt", "Not for you"],
+};
+const LISTING_RESULT_TO_STATUS = { verified: "verified", "needs-fixing": "fix", couldnt: "couldnt", "not-found": "notfound" };
+const DESC_LENGTHS = [["short", "Short", 50], ["medium", "Medium", 150], ["long", "Long", 250]];
+
+function siteDomainOf(site) {
+  return String(site || "").replace(/^sc-domain:/, "").replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+}
+
+function ListingsPanel({ site, showTips }) {
+  const [catalogue, setCatalogue] = useState(null);
+  const [reviewed, setReviewed] = useState(null);
+  const [items, setItems] = useState({});
+  const [details, setDetails] = useState(null);
+  const [urls, setUrls] = useState({});
+  const [checking, setChecking] = useState(null);
+  const [filter, setFilter] = useState("for-you");
+  const [descLen, setDescLen] = useState("medium");
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(null);
+  const loadedFor = useRef(null);
+  const placeholder = isPlaceholderSite(site);
+
+  useEffect(() => {
+    if (!site || placeholder) return;
+    let cancelled = false;
+    loadedFor.current = site;
+    setError(""); setItems({}); setDetails(null); setUrls({});
+    (async () => {
+      try {
+        const res = await authFetch(`${WORKER_URL}/api/listings`);
+        const data = await res.json();
+        if (!cancelled && res.ok) { setCatalogue(data.listings || []); setReviewed(data.lastReviewed || null); }
+        else if (!cancelled) setError("We couldn't load the list of directories just now. Please try again in a few minutes.");
+      } catch { if (!cancelled) setError("We couldn't reach RankActions just now. Check your internet connection and try again."); }
+      const [saved, profile, board] = await Promise.all([
+        loadUserData(site, "listings"), loadUserData(site, "site_profile"), loadUserData(site, "trust_board"),
+      ]);
+      if (cancelled || loadedFor.current !== site) return;
+      setItems((saved && saved.items) || {});
+      const ch = board && board.lastScan && board.lastScan.ch;
+      const fromProfile = (profile && profile.listingDetails) || {};
+      setDetails({
+        businessName: fromProfile.businessName || (profile && profile.businessName) || "",
+        registeredName: fromProfile.registeredName || (ch && ch.found ? titleCaseCompany(ch.name) : ""),
+        address: fromProfile.address || "",
+        phone: fromProfile.phone || "",
+        website: fromProfile.website || `https://${siteDomainOf(site)}`,
+        email: fromProfile.email || "",
+        short: fromProfile.short || "", medium: fromProfile.medium || "", long: fromProfile.long || "",
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [site, placeholder]);
+
+  if (placeholder) return <div className="tb tb-empty">Connect your website first, then come back to get it listed.</div>;
+  if (!catalogue || !details) return <div className="tb">{error ? <div className="tb-error" role="alert">{error}</div> : <div className="tb-empty"><span className="tb-spin" aria-hidden="true" /> Loading…</div>}</div>;
+
+  const saveItem = (id, patch) => {
+    setItems(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
+    Promise.resolve(mergeUserData(site, "listings", { items: { [id]: { ...(items[id] || {}), ...patch } } })).catch(() => {});
+  };
+  const saveDetails = (patch) => {
+    const next = { ...details, ...patch };
+    setDetails(next);
+    Promise.resolve(mergeUserData(site, "site_profile", { listingDetails: next })).catch(() => {});
+  };
+  const copy = (key, text) => {
+    try { navigator.clipboard.writeText(text); } catch { /* clipboard blocked */ }
+    setCopied(key); setTimeout(() => setCopied(c => (c === key ? null : c)), 2000);
+  };
+  const phoneDigits = p => { let d = String(p || "").replace(/\(0\)/g, "").replace(/[^\d+]/g, ""); if (d.startsWith("+44")) d = "0" + d.slice(3); return d; };
+  const postcodeOf = a => { const m = String(a || "").match(/\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b/i); return m ? `${m[1]} ${m[2]}`.toUpperCase() : null; };
+
+  const check = async (l) => {
+    const url = (urls[l.id] ?? (items[l.id] && items[l.id].profileUrl) ?? "").trim();
+    if (!url) { saveItem(l.id, { lastCheck: { result: "couldnt", evidence: "Paste the link to your page first. It's the address at the top of your browser when you're looking at your page." } }); return; }
+    setChecking(l.id);
+    try {
+      const res = await authFetch(`${WORKER_URL}/api/listing-check`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ site, listingId: l.id, profileUrl: url, details: {
+          businessName: details.businessName, registeredName: details.registeredName,
+          phones: details.phone ? [phoneDigits(details.phone)] : [], postcodes: postcodeOf(details.address) ? [postcodeOf(details.address)] : [],
+        } }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = res.status === 400 && data.error ? `${data.error} Open your page on ${l.name} and copy the address from the top of your browser.`
+          : res.status === 429 ? data.error : "We couldn't check it just now. Please try again in a few minutes.";
+        saveItem(l.id, { profileUrl: url, lastCheck: { result: "couldnt", evidence: msg } });
+        return;
+      }
+      saveItem(l.id, { profileUrl: url, status: LISTING_RESULT_TO_STATUS[data.result] || "couldnt", lastCheck: { result: data.result, evidence: data.evidence, issues: data.issues || [], at: data.checkedAt } });
+    } catch {
+      saveItem(l.id, { profileUrl: url, lastCheck: { result: "couldnt", evidence: "We couldn't reach RankActions just now. Check your internet connection and try again." } });
+    } finally { setChecking(null); }
+  };
+
+  const forYou = l => l.audience.includes("everyone") || l.audience.includes("local") || (items[l.id] && items[l.id].status && items[l.id].status !== "none");
+  const shown = catalogue.filter(l => filter === "all" || forYou(l));
+  const needsFix = catalogue.filter(l => items[l.id] && items[l.id].status === "fix");
+  const field = (key, label, multiline) => (
+    <div className="ls-field">
+      <label htmlFor={`ls-${key}`}>{label}</label>
+      <div className="ls-val">
+        {multiline
+          ? <textarea id={`ls-${key}`} rows={3} value={details[key]} onChange={e => setDetails({ ...details, [key]: e.target.value })} onBlur={() => saveDetails({})} />
+          : <input id={`ls-${key}`} value={details[key]} onChange={e => setDetails({ ...details, [key]: e.target.value })} onBlur={() => saveDetails({})} />}
+        <button className="ls-copy" onClick={() => copy(key, details[key])} disabled={!details[key]}>{copied === key ? "✓ Copied" : "Copy"}</button>
+      </div>
+    </div>
+  );
+  const [descKey, descLabel, descMax] = DESC_LENGTHS.find(d => d[0] === descLen);
+
+  return (
+    <div className="tb">
+      <h2>Get your business onto the websites your customers use</h2>
+      {showTips && <p className="tb-muted ls-intro">Directories like Yell and Google help customers find you, and when your details match everywhere, Google trusts them more. Join the ones that suit you, then paste the link to your page so we can check it's working.</p>}
+      {needsFix.length > 0 && (
+        <div className="ls-warn" role="status"><strong>{needsFix.length === 1 ? `Your ${needsFix[0].name} page needs updating.` : `${needsFix.length} of your listings need updating.`}</strong> {needsFix.map(l => (items[l.id].lastCheck && items[l.id].lastCheck.issues || [])[0]).filter(Boolean)[0] || ""} Customers and Google trust businesses whose details match everywhere.</div>
+      )}
+      <div className="ls-grid">
+        <aside className="ls-panel">
+          <h3>Your business details</h3>
+          {showTips && <p className="tb-faint">When a website asks for your details, copy them from here so they match everywhere. Change anything that's wrong; it saves automatically.</p>}
+          {field("businessName", "Business name")}
+          {field("registeredName", "Official company name")}
+          {field("address", "Address")}
+          {field("phone", "Phone")}
+          {field("website", "Website")}
+          {field("email", "Email")}
+          <div className="ls-field">
+            <label>Description <span className="tb-faint">{details[descKey].length} of {descMax} characters{showTips ? " (most websites ask for medium)" : ""}</span></label>
+            <div className="tb-options ls-lens" role="group" aria-label="Description length">
+              {DESC_LENGTHS.map(([k, label]) => <button key={k} className={`tb-opt ${descLen === k ? "on" : ""}`} aria-pressed={descLen === k} onClick={() => setDescLen(k)}>{label}</button>)}
+            </div>
+            <div className="ls-val">
+              <textarea aria-label={`${descLabel} description`} rows={descLen === "short" ? 2 : 4} maxLength={descMax} value={details[descKey]} placeholder={descLen === "short" ? "e.g. IT support and websites for Chester businesses." : "Say what you do, where, and who for. Only include what's true."} onChange={e => setDetails({ ...details, [descKey]: e.target.value })} onBlur={() => saveDetails({})} />
+              <button className="ls-copy" onClick={() => copy(descKey, details[descKey])} disabled={!details[descKey]}>{copied === descKey ? "✓ Copied" : "Copy"}</button>
+            </div>
+          </div>
+        </aside>
+        <div>
+          <div className="tb-options ls-filter" role="group" aria-label="Which listings">
+            <button className={`tb-opt ${filter === "for-you" ? "on" : ""}`} aria-pressed={filter === "for-you"} onClick={() => setFilter("for-you")}>Right for most businesses ({catalogue.filter(forYou).length})</button>
+            <button className={`tb-opt ${filter === "all" ? "on" : ""}`} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>Show all ({catalogue.length})</button>
+          </div>
+          {shown.map(l => {
+            const it = items[l.id] || {};
+            const status = it.status || "none";
+            const [pillClass, pillText] = LISTING_STATUS[status] || LISTING_STATUS.none;
+            const last = it.lastCheck;
+            return (
+              <article key={l.id} className="ls-card">
+                <div className="ls-top">
+                  <div className="ls-name-wrap"><span className="ls-name">{l.name}</span> <span className="ls-cost">{l.cost}</span>{showTips && <div className="tb-muted">{l.why}</div>}</div>
+                  <span className={`tb-pill ${pillClass}`}>{pillText}</span>
+                </div>
+                {status !== "notrel" && (
+                  <div className="ls-check">
+                    <input type="url" aria-label={`Link to your ${l.name} page`} placeholder={`Paste the link to your ${l.name} page`} value={urls[l.id] ?? it.profileUrl ?? ""} onChange={e => setUrls({ ...urls, [l.id]: e.target.value })} />
+                    <button className="tb-btn primary small" disabled={checking === l.id} onClick={() => check(l)}>{checking === l.id ? "Checking…" : "Check it's working"}</button>
+                    {status === "none" && <a className="tb-btn small" href={l.signupUrl} target="_blank" rel="noopener noreferrer" onClick={() => saveItem(l.id, { status: "submitted" })}>Join {l.name}</a>}
+                  </div>
+                )}
+                {last && (
+                  <div className="ls-result">
+                    {last.evidence}
+                    {last.issues && last.issues.length > 0 && <ul>{last.issues.map((x, i) => <li key={i}>{x}</li>)}</ul>}
+                    {last.result === "couldnt" && it.profileUrl && status !== "confirmed" && <div className="tb-actions"><button className="tb-btn small" onClick={() => saveItem(l.id, { status: "confirmed", confirmedAt: new Date().toISOString().slice(0, 10) })}>It's live, I've checked</button></div>}
+                  </div>
+                )}
+                <div className="ls-foot">
+                  {status !== "notrel"
+                    ? <button className="ls-link" onClick={() => saveItem(l.id, { status: "notrel" })}>Not for me</button>
+                    : <button className="ls-link" onClick={() => saveItem(l.id, { status: "none" })}>Show this again</button>}
+                </div>
+              </article>
+            );
+          })}
+          {reviewed && <p className="tb-faint">We last checked this list on {new Date(reviewed).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}. Prices can change, so check each website before paying for anything.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const GAP_GROUPS = [
+  ["possible", "Worth contacting", "Local businesses, suppliers and blogs. Send them a friendly email asking if they'd link to you too."],
+  ["association", "Memberships your competitors have", "If you belong to these too, show the badge on your website with a link to your member page."],
+  ["press", "Local news", "News websites that have written about your competitors. A local news story is a strong sign of trust."],
+  ["authority", "Councils and colleges", "Harder to get a link from, but very trusted by Google."],
+  ["listing", "Directories to join", "No need to ask anyone: just sign up in Listings."],
+];
+
+function LinkGapPanel({ site, plan, showTips, onAddProspect, onOpenListings }) {
+  const [comps, setComps] = useState(["", "", ""]);
+  const [running, setRunning] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [added, setAdded] = useState({});
+  const allowed = new Set(["business", "agency", "pro", "enterprise"]).has(plan);
+  const own = siteDomainOf(site);
+
+  const run = async () => {
+    const list = comps.map(c => c.trim()).filter(Boolean);
+    if (list.length < 2) { setError("Type in at least 2 competitor websites, like competitor.co.uk."); return; }
+    setRunning(true); setError(""); setResult(null);
+    try {
+      const res = await authFetch(`${WORKER_URL}/api/link-gap`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ site, competitors: list }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(res.status === 400 || res.status === 403 || res.status === 429 ? (data.error || "That didn't work. Check the competitor websites and try again.") : "We couldn't search just now. Nothing was used from your monthly searches. Please try again later.");
+        return;
+      }
+      setResult(data);
+      // Kept with the trust board for the membership and news tips.
+      if (data.trustSignals) Promise.resolve(mergeUserData(site, "trust_board", { trustSignals: { ...data.trustSignals, at: data.ranAt } })).catch(() => {});
+    } catch {
+      setError("We couldn't reach RankActions just now. Check your internet connection and try again.");
+    } finally { setRunning(false); }
+  };
+
+  if (!allowed) return (
+    <div className="tb">
+      <h2>Which websites mention your competitors but not you?</h2>
+      <p className="tb-muted ls-intro">Find websites that link to your competitors, so you know who to approach. This is part of the Business plan.</p>
+    </div>
+  );
+
+  const groups = result ? GAP_GROUPS.map(([k, title, desc]) => [k, title, desc, (result.prospects || []).filter(p => p.kind === k)]).filter(g => g[3].length) : [];
+  return (
+    <div className="tb">
+      <h2>Which websites mention your competitors but not you?</h2>
+      {showTips && <p className="tb-muted ls-intro">Type in the websites of 2 to 5 competitors. We'll find websites that link to at least two of them. They're the most likely to link to you too, which helps you appear higher in Google.</p>}
+      <div className="lg-inputs">
+        {comps.map((c, i) => (
+          <input key={i} aria-label={`Competitor ${i + 1}`} value={c} placeholder={i < 2 ? `Competitor ${i + 1}, e.g. competitor.co.uk` : "Another competitor (optional)"} onChange={e => { const n = [...comps]; n[i] = e.target.value; setComps(n); }} />
+        ))}
+        {comps.length < 5 && <button className="tb-btn small" onClick={() => setComps([...comps, ""])}>Add another</button>}
+      </div>
+      <div className="tb-actions">
+        <button className="tb-btn primary" disabled={running} onClick={run}>{running ? <><span className="tb-spin" aria-hidden="true" /> Looking for websites…</> : "Find websites"}</button>
+        {result && typeof result.runsLeft === "number" && <span className="tb-faint">You have {result.runsLeft} searches left this month for this website. Searching the same competitors again within a week is free.</span>}
+      </div>
+      {error && <div className="tb-error lg-error" role="alert">{error}</div>}
+      {result && (
+        <>
+          <p className="tb-faint lg-summary">
+            {result.prospects.length
+              ? `We found ${result.prospects.length} website${result.prospects.length === 1 ? "" : "s"} that link to your competitors but not to you.`
+              : "We didn't find any realistic websites this time. Try different competitors."}
+            {" "}We've left out spam websites, national newspapers and big sites like Facebook, because they won't help a business like yours.
+          </p>
+          {groups.map(([k, title, desc, list]) => (
+            <section key={k} className="lg-group">
+              <h3>{title} <span className="tb-faint">({list.length})</span></h3>
+              {showTips && <p className="tb-muted">{desc}</p>}
+              {list.map(p => {
+                const names = p.links.map(x => x.competitor);
+                const linksTo = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+                return (
+                  <div key={p.domain} className="lg-row">
+                    <div className="lg-dom">{p.domain}</div>
+                    <div className="lg-links">Links to {linksTo}</div>
+                    <div>
+                      {k === "listing"
+                        ? <button className="tb-btn small" onClick={onOpenListings}>Go to Listings</button>
+                        : k === "association" || k === "press"
+                        ? <span className="tb-faint">{k === "association" ? "Show it if you're a member" : "Worth a local story"}</span>
+                        : added[p.domain]
+                        ? <span className="tb-pill found">✓ Added</span>
+                        : <button className="tb-btn small primary" onClick={() => { onAddProspect(p.domain, k === "authority" ? "Council or college" : "Linked to competitors"); setAdded({ ...added, [p.domain]: true }); }}>Add to my contact list</button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
+          ))}
+        </>
+      )}
+      {!result && !running && own && showTips && <p className="tb-faint lg-summary">Not sure who your competitors are? Search Google for your main service and town, and use the businesses that appear above you.</p>}
+    </div>
+  );
+}
+
 
 async function callClaude(userMsg, systemMsg, mode = 'standard') {
   // Facts first, the caller's role and output-format instructions last, so the
@@ -2917,6 +3264,8 @@ export default function RankActions() {
   const [siteOpen,     setSiteOpen]     = useState(false);
   // Page Audit: "page" (today's audit) or "trust" (Trust checks).
   const [auditTab,     setAuditTab]     = useState("page");
+  // Link Building: "opps" (today's screen), "listings", "gap".
+  const [linkTab,      setLinkTab]      = useState("opps");
   // "Show tips and explanations" (Settings). Saved on the account; cached here
   // so the first paint matches. Missing means on.
   const [showTips,     setShowTips]     = useState(() => { try { return localStorage.getItem("ra_show_tips") !== "0"; } catch { return true; } });
@@ -9307,7 +9656,7 @@ Return ONLY valid JSON array:
   {
     "title": "specific opportunity title",
     "type": "Guest Post | Directory | Resource Page | Broken Link | Testimonial | Partnership | Local Citation | Press | HARO",
-    "difficulty": "easy | medium | hard",
+    "difficulty": "easy | medium",
     "description": "2-3 sentences explaining exactly what this is and why it matters for SEO",
     "targets": [
       {"name": "specific platform or site name", "url": "https://actual-url.com", "contactMethod": "how to find the contact"}
@@ -9319,7 +9668,7 @@ Return ONLY valid JSON array:
   }
 ]
 
-Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource pages, HARO, testimonials), 2 hard but high value (guest posts, press), 1 creative/unexpected approach.`;
+Include a mix of: 3 easy/quick wins (directories, citations, supplier and partner links), 4 medium (resource pages, journalist requests, testimonials, local partnerships), 1 creative/unexpected approach. Leave out national newspapers, big publications and guest posts on large websites: they're unrealistic for a small business.`;
 
       // Use Gemini research endpoint (grounded in real Google search results)
       // Falls back to Claude automatically if Gemini isn't configured
@@ -9342,7 +9691,8 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
       const jsonCandidate = (firstBracket !== -1 && lastBracket > firstBracket)
         ? cleaned.slice(firstBracket, lastBracket + 1)
         : cleaned;
-      const parsed = JSON.parse(jsonCandidate);
+      // Unrealistic ("hard") suggestions are dropped even if the model adds them.
+      const parsed = JSON.parse(jsonCandidate).filter(o => String(o && o.difficulty).toLowerCase() !== "hard");
 
       // If Gemini provided grounding sources, enrich the opportunities
       if (data.sources?.length > 0) {
@@ -9361,7 +9711,6 @@ Include a mix of: 2 easy/quick wins (directories, citations), 3 medium (resource
       setLinkOpps([
         { title:"Google Business Profile", type:"Local Citation", difficulty:"easy", description:`Claim and optimise your Google Business Profile. This is the single most important local citation and directly impacts Google Maps rankings.`, targets:[{name:"Google Business Profile",url:"https://business.google.com",contactMethod:"Sign in with your Google account and follow the verification steps"}], steps:["Go to business.google.com","Click 'Manage now'","Search for your business or add it","Fill in all details — name, address, phone, hours, categories","Verify via postcard, phone or email","Add photos, services and a description with your keywords"], value:"High", timeToResult:"1-2 weeks", complianceNote:"Ensure your business name, address and phone match exactly across all citations" },
         { title:"Industry directory listings", type:"Directory", difficulty:"easy", description:`Submit ${selectedSite} to relevant industry directories. Consistent directory listings build domain authority and help Google verify your business.`, targets:[{name:"Yell.com",url:"https://www.yell.com/free-listing/",contactMethod:"Use the free listing submission form"},{name:"Thomson Local",url:"https://www.thomsonlocal.com/advertise/",contactMethod:"Free listing via advertise page"},{name:"Bing Places",url:"https://www.bingplaces.com",contactMethod:"Sign in with Microsoft account"}], steps:["Visit each directory and look for 'Add a listing' or 'Claim your business'","Use identical business name, address and phone number (NAP) on every listing","Choose the most specific category available","Add a unique description for each — don't copy-paste the same one","Submit and wait for verification"], value:"Medium", timeToResult:"1-2 weeks", complianceNote:"Never pay for basic directory listings — most offer free tiers. Ensure NAP consistency across all listings" },
-        { title:"Guest posts on industry blogs", type:"Guest Post", difficulty:"hard", description:`Write expert articles for blogs in your niche. Guest posting builds high-quality editorial links and positions you as an authority.`, targets:[{name:"Search Google",url:"https://www.google.com",contactMethod:'Search: "your industry" + "write for us" or "guest post" or "contribute"'}], steps:["Search Google for industry blogs accepting guest posts","Read their guidelines carefully before pitching","Write a personalised email referencing a specific article they published","Pitch 2-3 unique topic ideas relevant to their audience","If accepted, write genuinely useful content — not a sales pitch","Include one natural link to your site within the article"], value:"High", timeToResult:"4-8 weeks", complianceNote:"Never pay for guest posts — Google considers paid links a violation. Focus on genuine, valuable content" },
         { title:"HARO / journalist requests", type:"Press", difficulty:"medium", description:`Respond to journalist queries on platforms like HARO, Qwoted or SourceBottle. When quoted in an article, you often receive a backlink to your site.`, targets:[{name:"HARO (Help a Reporter Out)",url:"https://www.helpareporter.com",contactMethod:"Sign up as a source — free tier available"},{name:"Qwoted",url:"https://www.qwoted.com",contactMethod:"Create a source profile"},{name:"SourceBottle",url:"https://www.sourcebottle.com",contactMethod:"Sign up for email alerts"}], steps:["Sign up on HARO, Qwoted or SourceBottle as a source","Set up alerts for your industry keywords","When a relevant query arrives, respond within 1-2 hours — speed matters","Keep your response concise (3-4 sentences), specific and quotable","Include your name, title, and website URL","Follow up once if you don't hear back within a week"], value:"High", timeToResult:"2-6 weeks", complianceNote:"Only respond to genuine queries where you have real expertise. Never fabricate credentials" },
         { title:"Supplier and partner links", type:"Partnership", difficulty:"easy", description:`Ask your existing suppliers, partners and clients to link to ${selectedSite} from their website. These are warm relationships and often convert quickly.`, targets:[{name:"Your existing contacts",url:"",contactMethod:"Email your account manager or main contact at each partner"}], steps:["List all suppliers, partners and clients you work with","Check if they have a 'partners', 'clients' or 'links' page on their website","Send a friendly email asking if they would add your site","Offer to reciprocate — add their link to your site too","Follow up once after a week if no response"], value:"Medium", timeToResult:"1-2 weeks", complianceNote:"Reciprocal linking in moderation is fine — avoid excessive link exchange schemes" },
         { title:"Broken link building", type:"Broken Link", difficulty:"medium", description:`Find broken links on relevant websites and offer your content as a replacement. This provides genuine value to the site owner while earning you a link.`, targets:[{name:"Check My Links (Chrome extension)",url:"https://chrome.google.com/webstore/detail/check-my-links",contactMethod:"Install the extension and run it on competitor resource pages"}], steps:["Install the 'Check My Links' Chrome extension","Visit resource pages and blog posts in your industry","Run the extension — it highlights broken links in red","Note the broken URL and the page it appears on","Create or identify content on your site that covers the same topic","Email the site owner: explain the broken link and suggest your page as a replacement"], value:"High", timeToResult:"2-4 weeks", complianceNote:"Be genuinely helpful — only suggest your content if it truly replaces what the broken link pointed to" },
@@ -12155,9 +12504,9 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                       document.getElementById("links-outreach-section")?.scrollIntoView({behavior:"smooth"});
                     }}>✍ Write outreach</button>
                     {prospectAdded === (opp.targets?.[0]?.name || opp.title)
-                      ? <button className="links-opp-btn" onClick={scrollToProspects}>✓ Added · view Prospect Tracker ↓</button>
+                      ? <button className="links-opp-btn" onClick={scrollToProspects}>✓ Added · view my contact list ↓</button>
                       : <button className="links-opp-btn" onClick={()=>saveProspect(opp.targets?.[0]?.name || opp.title, opp.type)}>
-                          + Add to Prospect Tracker
+                          + Add to my contact list
                         </button>}
                   </div>
                 </div>
@@ -12212,9 +12561,9 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
                     setCopiedEmail(true); setTimeout(()=>setCopiedEmail(false),1600);
                   }}>{copiedEmail?"✓ Copied":"📋 Copy email"}</button>
                   {prospectAdded === linkTemplateTarget
-                    ? <button className="links-opp-btn" onClick={scrollToProspects}>✓ Added · view Prospect Tracker ↓</button>
+                    ? <button className="links-opp-btn" onClick={scrollToProspects}>✓ Added · view my contact list ↓</button>
                     : <button className="links-opp-btn" onClick={()=>{saveProspect(linkTemplateTarget,"Outreach");}}>
-                        + Add to Prospect Tracker
+                        + Add to my contact list
                       </button>}
                   <button className="links-opp-btn" onClick={()=>{setLinkTemplateOutput("");generateOutreachEmail();}}>
                     ↻ Regenerate
@@ -12231,11 +12580,11 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           </div>
         </div>
 
-        {/* ── Section 3: Prospect Tracker ── */}
+        {/* ── Section 3: My contact list (was Prospect Tracker) ── */}
         <div className="links-section" id="links-prospect-tracker">
           <div className="links-section-head">
             <div>
-              <div className="links-section-title">Prospect Tracker</div>
+              <div className="links-section-title">My contact list</div>
               <div className="links-section-sub">Track every outreach — drag prospects between columns as they progress</div>
             </div>
             <button className="links-opp-btn primary" onClick={()=>setAddingTo("identified")}>+ Add prospect</button>
@@ -12297,7 +12646,7 @@ ${strat ? `<h3 style="font-size:.85rem;margin:.75rem 0 .3rem">Content Strategy</
           </div>
           {linkProspects.length === 0 && (
             <div style={{padding:"2rem",textAlign:"center",color:"var(--text3)",fontSize:".82rem"}}>
-              No prospects tracked yet — generate opportunities above and click "Add to Prospect Tracker"
+              Nobody on your list yet. Find opportunities above and click "Add to my contact list".
             </div>
           )}
         </div>
@@ -15043,7 +15392,18 @@ Return ONLY valid JSON — no markdown:
             {screen==="siteDetail" && <SiteDetailContent/>}
             {screen==="content"    && <ContentGenerator/>}
             {screen==="strategy"   && <StrategyPlanner/>}
-            {screen==="links"      && <LinkBuildingScreen/>}
+            {screen==="links"      && (
+              <>
+                <div className="audit-tabs" role="tablist" aria-label="Link Building">
+                  <button role="tab" aria-selected={linkTab==="opps"} className={`tab-btn ${linkTab==="opps"?"active":""}`} onClick={()=>setLinkTab("opps")}>Opportunities</button>
+                  <button role="tab" aria-selected={linkTab==="listings"} className={`tab-btn ${linkTab==="listings"?"active":""}`} onClick={()=>setLinkTab("listings")}>Listings</button>
+                  <button role="tab" aria-selected={linkTab==="gap"} className={`tab-btn ${linkTab==="gap"?"active":""}`} onClick={()=>setLinkTab("gap")}>Who mentions competitors</button>
+                </div>
+                {linkTab==="opps" ? <LinkBuildingScreen/>
+                  : linkTab==="listings" ? <ListingsPanel site={selectedSite} showTips={showTips}/>
+                  : <LinkGapPanel site={selectedSite} plan={plan} showTips={showTips} onAddProspect={saveProspect} onOpenListings={()=>setLinkTab("listings")}/>}
+              </>
+            )}
             {screen==="tracker"    && <RankTracker/>}
             {screen==="audit"      && (
               <>
